@@ -416,7 +416,7 @@ function finish(won,why) {
 
 // ===== Global leaderboard (shared JSON bin, same setup as the other games) =====
 // Entries: [initials, score, seconds, won(1/0)]. Ranked by score.
-const LB_URL = "https://json.extendsclass.com/bin/BIN_ID_HERE";
+const LB_URL = "https://json.extendsclass.com/bin/26db85ce0e56";
 const LB_SIZE = 10;
 let board = [], lbOnline = false, lastResult = null, justAdded = null;
 const resultsEl=document.querySelector("#results"), entryEl=document.querySelector("#entry"),
