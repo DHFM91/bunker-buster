@@ -33,8 +33,38 @@ const columns=5, rows=7, room=5, stride=8, wallTop=9;
 const X=(columns-1)*stride+room+2, Y=12, Z=(rows-1)*stride+room+2;
 const firstCell=2, lastCell=(rows-1)*columns+2;
 const world = new Uint8Array(X * Y * Z);
-const colors = [[0,0,0], [76,82,75], [153,139,108], [66,83,84],
+let colors = [[0,0,0], [76,82,75], [153,139,108], [66,83,84],
   [43,160,106], [229,143,47], [108,84,57], [124,112,92]];
+// Per-deploy colour scheme. Intel (orange) and extraction pad (green) never change so
+// objectives always read the same; everything else is re-rolled on each load.
+let palette = {stripe:[178,126,53], stripeDark:[60,57,45], skyLo:[105,124,128], skyHi:[46,77,92]};
+function hsl(h,s,l) {
+  h=((h%360)+360)%360/360;
+  const f=n=>{ const k=(n+h*12)%12, a=s*Math.min(l,1-l); return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))); };
+  return [f(0),f(8),f(4)];
+}
+function rollPalette(random=Math.random) {
+  const r=(a,b)=>a+random()*(b-a);
+  const hue=r(0,360);
+  const concrete=hsl(hue+r(-20,20),r(.08,.3),r(.42,.6));
+  const floor=hsl(hue+r(-60,60),r(.05,.2),r(.24,.36));
+  const outer=hsl(hue+r(120,240),r(.08,.25),r(.22,.34));
+  // hazard-stripe accent: kept away from the intel's orange and the pad's green
+  const accentHue=[0,52,190,215,280,320][Math.floor(random()*6)]+r(-8,8);
+  const skyHue=hue+r(-90,90);
+  palette={
+    stripe:hsl(accentHue,r(.55,.8),r(.42,.55)), stripeDark:hsl(accentHue+180,.1,.18),
+    skyLo:hsl(skyHue,r(.1,.35),r(.38,.6)), skyHi:hsl(skyHue+r(-20,20),r(.2,.45),r(.16,.3)),
+  };
+  colors=[[0,0,0], floor, concrete, outer, [43,160,106], [229,143,47], [108,84,57],
+    concrete.map(c=>c*.82)];
+  const fogMix=hsl(skyHue,.12,.24);
+  for (let c=0;c<3;c++) {
+    groundFog[c]=fogMix[c];
+    dustColor[c]=concrete[c]*.95; rubbleColor[c]=Math.min(255,concrete[c]*1.15);
+  }
+  textures=buildTextures();
+}
 function cellCenter(cell) {
   return {x:1+cell%columns*stride+room/2, z:1+Math.floor(cell/columns)*stride+room/2};
 }
@@ -53,6 +83,7 @@ const windup = .6, bulletSpeed = 21;
 let blast, stridePhase, sway;
 const plantTime = .55, fuseTime = 1.65, plantRange = 4.5;
 let charge;
+let run={time:0,blocks:0};
 
 function inside(x, y, z) {
   return x >= 0 && y >= 0 && z >= 0 && x < X && y < Y && z < Z;
@@ -101,6 +132,8 @@ function generateMaze(random) {
 }
 
 function reset(random=Math.random) {
+  rollPalette();
+  run={time:0,blocks:0};
   world.fill(0);
   box(0,0,0,X,1,Z,1);
   box(0,1,0,1,wallTop,Z,3);
@@ -252,6 +285,7 @@ function shoot() {
     say(target.hp ? "HIT" : "HOSTILE DOWN");
   } else if (material===2 || material===7) {
     world[index(hit.x,hit.y,hit.z)]=0;
+    if (material===2) run.blocks++;
     integrityTimer=integrityTimer||.05;
     const x=player.x+dx*(hit.t-.04), y=player.eye+dy*(hit.t-.04);
     const z=player.z+dz*(hit.t-.04);
@@ -272,7 +306,7 @@ function carve(cx,cy,cz,radius,onRemove=()=>{}) {
         if (m!==2 && m!==7) continue;
         if ((x+.5-cx)**2+(y+.5-cy)**2+(z+.5-cz)**2>radius**2) continue;
         world[index(x,y,z)]=0;
-        removed++;
+        removed++; if (m===2) run.blocks++;
         onRemove(x+.5,y+.5,z+.5);
       }
   if (removed) integrityTimer=integrityTimer||.05;
@@ -346,17 +380,115 @@ function updateCharge(dt) {
   say(removed+" CONCRETE CELLS CLEARED");
 }
 
+// ===== Scoring =====
+// Time is king: a fast extraction is worth far more than anything else.
+// Damage taken shaves 1% off the subtotal per HP lost.
+const SCORE={extract:5000, timeBase:300, perSecond:100, guard:750, block:5};
+function scoreRun(won) {
+  const downed=guards.filter(g=>!g.hp).length;
+  const damage=100-player.hp;
+  const lines=[];
+  if (won) {
+    lines.push(["Extraction", "", SCORE.extract]);
+    lines.push(["Time bonus", fmtTime(run.time), Math.max(0,Math.round((SCORE.timeBase-run.time)*SCORE.perSecond))]);
+  } else {
+    lines.push(["Extraction", "failed", 0]);
+    lines.push(["Time bonus", "no extraction", 0]);
+  }
+  lines.push(["Soldiers downed", downed+" × "+SCORE.guard, downed*SCORE.guard]);
+  lines.push(["Concrete destroyed", run.blocks+" × "+SCORE.block, run.blocks*SCORE.block]);
+  const subtotal=lines.reduce((a,l)=>a+l[2],0);
+  const penalty=Math.round(subtotal*Math.min(100,damage)/100);
+  return {lines,subtotal,damage,penalty,total:Math.max(0,subtotal-penalty),time:run.time,won};
+}
+function fmtTime(t) { const m=Math.floor(t/60), s=t-m*60; return m+":"+(s<10?"0":"")+s.toFixed(2); }
+
 function finish(won,why) {
   phase=won?"won":"lost"; keys.clear();
   touchFire=false; touchMove.x=touchMove.y=0; touchLayer.hidden=true;
   overlay.hidden=false;
   title.textContent=won?"EXTRACTED":"MISSION FAILED";
-  brief.textContent=won?"Intel secured. Relay Station operation complete.":(why||"You were hit before reaching extraction.");
+  brief.textContent=won?"Intel secured in "+fmtTime(run.time)+".":(why||"You were hit before reaching extraction.");
   deploy.textContent="REDEPLOY";
   if (document.pointerLockElement===screen) document.exitPointerLock();
+  showResults(scoreRun(won));
 }
 
+// ===== Global leaderboard (shared JSON bin, same setup as the other games) =====
+// Entries: [initials, score, seconds, won(1/0)]. Ranked by score.
+const LB_URL = "https://json.extendsclass.com/bin/BIN_ID_HERE";
+const LB_SIZE = 10;
+let board = [], lbOnline = false, lastResult = null, justAdded = null;
+const resultsEl=document.querySelector("#results"), entryEl=document.querySelector("#entry"),
+  initialsEl=document.querySelector("#initials"), boardEl=document.querySelector("#board");
+function cleanBoard(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(r=>Array.isArray(r) && typeof r[0]==="string" && Number.isFinite(r[1]))
+    .map(r=>[r[0].toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3)||"???",Math.max(0,Math.round(r[1])),+r[2]||0,r[3]?1:0])
+    .sort((a,b)=>b[1]-a[1]).slice(0,LB_SIZE);
+}
+async function lbRequest(opts) {
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),6000);
+  try {
+    const res=await fetch(LB_URL,{...opts,signal:ctl.signal,cache:"no-store"});
+    if (!res.ok) throw new Error(res.status);
+    return res;
+  } finally { clearTimeout(t); }
+}
+async function fetchBoard() {
+  try { board=cleanBoard(await (await lbRequest({})).json()); lbOnline=true; }
+  catch { lbOnline=false; }
+}
+const qualifies=score=>score>0 && (board.length<LB_SIZE || score>board[board.length-1][1]);
+function renderBoard() {
+  const rows=[];
+  for (let i=0;i<LB_SIZE;i++) {
+    const r=board[i];
+    const mine=r && justAdded && r[0]===justAdded[0] && r[1]===justAdded[1] && r[2]===justAdded[2];
+    rows.push(`<li${mine?' class="mine"':""}><span>${String(i+1).padStart(2," ")}.</span><b>${r?r[0]:"---"}</b>`+
+      `<em>${r?(r[3]?fmtTime(r[2]):"KIA"):""}</em><strong>${r?r[1].toLocaleString():""}</strong></li>`);
+  }
+  boardEl.innerHTML=`<div class="eyebrow">GLOBAL TOP ${LB_SIZE}${lbOnline?"":" · offline, showing last known"}</div><ol>${rows.join("")}</ol>`;
+  boardEl.hidden=false;
+}
+async function showResults(r) {
+  lastResult=r; justAdded=null;
+  const row=(a,b,c,cls="")=>`<tr class="${cls}"><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
+  resultsEl.innerHTML=`<table>`+
+    r.lines.map(l=>row(l[0],l[1],l[2].toLocaleString())).join("")+
+    row("Subtotal","",r.subtotal.toLocaleString(),"sub")+
+    row("Damage taken",r.damage+" HP → −"+Math.min(100,r.damage)+"%",(r.penalty?"−":"")+r.penalty.toLocaleString(),r.penalty?"pen":"")+
+    row("FINAL SCORE","",r.total.toLocaleString(),"total")+`</table>`;
+  resultsEl.hidden=false; entryEl.hidden=true; overlay.querySelector("article").classList.add("scored");
+  boardEl.hidden=false; boardEl.innerHTML=`<div class="eyebrow">GLOBAL TOP ${LB_SIZE} · loading…</div>`;
+  await fetchBoard();
+  if (lastResult!==r) return;
+  renderBoard();
+  if (qualifies(r.total)) {
+    entryEl.hidden=false; initialsEl.value=""; 
+    if (!touchDevice) initialsEl.focus();
+  }
+}
+async function submitInitials() {
+  const r=lastResult; if (!r || entryEl.hidden) return;
+  const name=initialsEl.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3);
+  if (!name) { initialsEl.focus(); return; }
+  entryEl.hidden=true;
+  const entry=[name,r.total,Math.round(r.time*100)/100,r.won?1:0];
+  await fetchBoard();                       // merge with the freshest list right before writing
+  board=cleanBoard(board.concat([entry])); justAdded=entry;
+  if (lbOnline) {
+    try { await lbRequest({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(board)}); }
+    catch { lbOnline=false; }
+  }
+  renderBoard();
+}
+document.querySelector("#entry-save").addEventListener("click",submitInitials);
+initialsEl.addEventListener("keydown",e=>{ e.stopPropagation(); if (e.key==="Enter") submitInitials(); });
+initialsEl.addEventListener("input",()=>{ initialsEl.value=initialsEl.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3); });
+
 function update(dt,clock) {
+  run.time+=dt;
   cooldown=Math.max(0,cooldown-dt); flash=Math.max(0,flash-dt);
   hurt=Math.max(0,hurt-dt);
   noticeTime=Math.max(0,noticeTime-dt);
@@ -527,6 +659,7 @@ function updateStructure(dt) {
     pending.delete(i);
     if (!isDyn(world[i])) continue;
     const m=world[i]; world[i]=0; dropped++;
+    if (m===2) run.blocks++;
     const x=i%X, z=Math.floor(i/X)%Z, y=Math.floor(i/(X*Z));
     fallers.push({x:x+.5,y:y+.5,z:z+.5,vx:(Math.random()-.5)*.6,vy:-Math.random()*.5,vz:(Math.random()-.5)*.6,m,tint:.8+Math.random()*.35,spin:(Math.random()-.5)*8});
   }
@@ -626,10 +759,11 @@ const focal = height*145/126;   // tied to height so wide screens see more, not 
 const faceLight = [.72,1,.87];
 const dustColor=[156,130,101], rubbleColor=[190,152,104];
 const groundFog=[54,69,71];
+let textures;
 const textureSize = 64;
 
 // Generate repeating material maps once. Coordinates are tied to world faces.
-const textures = colors.map((base,id)=>{
+function buildTextures() { return colors.map((base,id)=>{
   const data = new Uint8Array(textureSize*textureSize*3);
   for (let y=0; y<64; y++) {
     for (let x=0; x<64; x++) {
@@ -645,7 +779,7 @@ const textures = colors.map((base,id)=>{
         if (Math.abs(crack)<1.6 || branch) shade-=76;
         else if (crack>=1.6 && crack<3) shade+=27;
         if (y>54 && y<63) {
-          tint=((x+y)>>3)&1?[178,126,53]:[60,57,45];
+          tint=((x+y)>>3)&1?palette.stripe:palette.stripeDark;
           shade*=.65;
         }
         if (x<2 || y<2) shade-=24;
@@ -659,7 +793,7 @@ const textures = colors.map((base,id)=>{
         // crushed concrete grain; the chunk shapes come from the sub-voxel heap
         shade=(grit-15)*1.1+mottling*.6-6;
         if (grit<5) shade-=26;
-        if (((x*7+y*13)&31)===0) tint=[160,132,96];
+        if (((x*7+y*13)&31)===0) tint=base.map(c=>c*1.25);
       } else if (id===6) {
         // Steel-banded supply crate, one panel per voxel face.
         const lx=x&15, ly=y&15;
@@ -683,7 +817,7 @@ const textures = colors.map((base,id)=>{
     }
   }
   return data;
-});
+}); }
 
 function guardView(guard) {
   const bearing=Math.atan2(player.x-guard.x,player.z-guard.z);
@@ -871,9 +1005,10 @@ function render(clock) {
         const altitude=Math.max(0,Math.min(1,by*1.8));
         const sunlight=Math.max(0,1-((dx+.25)**2+(by-.39)**2+(dz-.82)**2)*9);
         const glow=sunlight**4*93;
-        pixels[j]=105-altitude*59+glow;
-        pixels[j+1]=124-altitude*47+glow*.82;
-        pixels[j+2]=128-altitude*36+glow*.53;
+        const lo=palette.skyLo, hi=palette.skyHi;
+        pixels[j]=lo[0]+(hi[0]-lo[0])*altitude+glow;
+        pixels[j+1]=lo[1]+(hi[1]-lo[1])*altitude+glow*.82;
+        pixels[j+2]=lo[2]+(hi[2]-lo[2])*altitude+glow*.53;
       } else {
         const px=player.x+dx*ray.t, py=player.eye+by*ray.t, pz=player.z+dz*ray.t;
         const u=ray.side===0?pz:px;
@@ -1259,7 +1394,7 @@ function pauseTouch() {
 }
 
 deploy.addEventListener("click",()=>{
-  if (phase==="won" || phase==="lost") reset();
+  if (phase==="won" || phase==="lost") { reset(); resultsEl.hidden=entryEl.hidden=boardEl.hidden=true; lastResult=null; overlay.querySelector("article").classList.remove("scored"); }
   const Audio = window.AudioContext || window.webkitAudioContext;
   if (Audio) {
     audio ??= new Audio();

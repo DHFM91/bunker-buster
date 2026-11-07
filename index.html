@@ -68,6 +68,38 @@ p{max-width:53ch;color:#ccd5ca;margin:.7em 0 1.15em;line-height:1.5}
 kbd{font:inherit;border:1px solid #a9d9bd58;border-radius:2px;padding:.14em .35em;color:#e9eee4}
 button{padding:.78em 1.45em;background:var(--amber);color:#161c18;border:1px solid #ffda9f;font:900 14px monospace;letter-spacing:.08em;cursor:pointer}
 button:hover,button:focus-visible{background:#ffdb9e;outline:2px solid #fff0ca;outline-offset:3px}
+article.scored{width:min(100%,1000px)}
+article.scored h1{font-size:clamp(24px,4.6vw,60px)}
+article.scored p{margin:.3em 0 .8em}
+.scorewrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 2.2em;align-items:start}
+@media(max-width:700px),(max-height:520px){.scorewrap{gap:0 1em}#board li{padding:.06em .3em}#results td{padding:.16em .3em}}
+article.scored .controls{display:none!important}
+@media(max-height:520px){
+  article.scored{padding:10px 14px}
+  article.scored>.eyebrow,article.scored h1{display:none}
+  article.scored #brief{margin:0 0 .4em;font-size:12px}
+  article.scored #board li:nth-child(n+6){display:none}
+  #results table{margin:0 0 .5em}
+  #initials{font-size:15px;padding:.35em .5em}
+  #entry-save{padding:.5em 1em}
+  article.scored #deploy{padding:.55em 1.2em}
+}
+#results table{width:100%;max-width:30em;border-collapse:collapse;font:700 clamp(10px,1.15vw,14px) monospace;margin:.2em 0 1em}
+#results td{padding:.28em .4em;border-bottom:1px solid #a9d9bd22;color:#ccd5ca}
+#results td:nth-child(2){color:#93a597;font-weight:400}
+#results td:last-child{text-align:right;color:#e5e8d9}
+#results tr.sub td{border-top:1px solid #a9d9bd70}
+#results tr.pen td{color:#ff8f7a}
+#results tr.total td{font-size:1.35em;color:var(--amber);border-bottom:0;padding-top:.5em}
+#entry{margin:0 0 1em;font:700 clamp(10px,1.1vw,13px) monospace;color:var(--amber);letter-spacing:.12em}
+#entry div{display:flex;gap:.5em;margin-top:.45em}
+#initials{width:5.2em;padding:.5em .6em;background:#0b1414;border:1px solid var(--amber);color:#fff0ca;font:900 20px monospace;letter-spacing:.3em;text-transform:uppercase}
+#board{margin:0 0 1.1em}
+#board ol{list-style:none;margin:.45em 0 0;padding:0;font:700 clamp(10px,1.05vw,13px) monospace;max-width:30em}
+#board li{display:grid;grid-template-columns:2.4em 3.4em 1fr auto;gap:.4em;padding:.16em .3em;color:#c2cfc3}
+#board li em{font-style:normal;color:#93a597}
+#board li strong{text-align:right;color:#e5e8d9}
+#board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
 <script defer src="bunker-buster.js"></script>
@@ -104,6 +136,16 @@ button:hover,button:focus-visible{background:#ffdb9e;outline:2px solid #fff0ca;o
       <div class="eyebrow">FIELD OPERATIONS / RELAY STATION</div>
       <h1 id="title">BUNKER BUSTER</h1>
       <p id="brief">Recover the orange intel case and return to the green extraction pad. Follow the corridors, or plant charges on cracked concrete to cut a shorter route. Each rifle shot removes one piece of concrete.</p>
+      <div class="scorewrap">
+      <div id="results" hidden></div>
+      <div>
+      <div id="entry" hidden>
+        <label for="initials">NEW HIGH SCORE · ENTER INITIALS</label>
+        <div><input id="initials" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AAA"><button id="entry-save">SAVE</button></div>
+      </div>
+      <div id="board" hidden></div>
+      </div>
+      </div>
       <button id="deploy">DEPLOY</button>
       <div class="controls" aria-label="Controls">
         <span><kbd>WASD</kbd> Move</span><span><kbd>Mouse</kbd> Aim</span><span><kbd>Click</kbd> Fire</span>
