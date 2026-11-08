@@ -1,5 +1,7 @@
 "use strict";
 
+// Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
+const VERSION = "v4";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones get a render buffer matching their wider screen shape (same height, more width = wider view).
@@ -1510,6 +1512,7 @@ function drawPlant(progress) {
 const isTouch=touchDevice;
 const touchMove={x:0,y:0};
 let touchFire=false, touchCrouch=false;
+document.querySelector("#version").textContent="BUNKER BUSTER "+VERSION;
 const touchLayer=document.querySelector("#touch");
 if (isTouch) {
   document.querySelector("main").classList.add("touch");

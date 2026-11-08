@@ -79,6 +79,7 @@ article.scored h1{font-size:clamp(24px,4.6vw,60px)}
 article.scored p{margin:.3em 0 .8em}
 .scorewrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 2.2em;align-items:start}
 @media(max-width:700px),(max-height:520px){.scorewrap{gap:0 1em}#board li{padding:.06em .3em}#results td{padding:.16em .3em}}
+#version{margin-top:1em;font:700 10px monospace;letter-spacing:.18em;color:#93a59799;text-align:right}
 article.scored .controls{display:none!important}
 @media(max-height:520px){
   article.scored{padding:10px 14px}
@@ -108,7 +109,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js"></script>
+<script defer src="bunker-buster.js?v=4"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">
@@ -154,6 +155,7 @@ article.scored .controls{display:none!important}
       </div>
       </div>
       <button id="deploy">DEPLOY</button>
+      <div id="version"></div>
       <div class="controls" aria-label="Controls">
         <span><kbd>WASD</kbd> Move</span><span><kbd>Mouse</kbd> Aim</span><span><kbd>Click</kbd> Fire</span>
         <span><kbd>Q</kbd> Plant</span><span><kbd>R</kbd> Reload</span><span><kbd>C</kbd> Crouch</span><span><kbd>Esc</kbd> Pause</span>

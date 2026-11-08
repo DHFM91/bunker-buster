@@ -29,5 +29,11 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | C: crouch | DUCK |
 | Esc: pause | II |
 
+## Version history
+- **v4:** four alert phases (Undetected, Caution, Evasion, Alert) with reinforcements; map doubled to 7 × 10 rooms; centred menus; more ammo and charges.
+- **v3:** global top-10 leaderboard connected.
+- **v2:** new random colour scheme on every deploy; itemised scoring (time, soldiers, concrete, damage penalty).
+- **v1:** first public release: voxel maze, destructible concrete with structural collapse, breach charges, guards with wind-up shots, desktop and touch controls.
+
 ## Running it locally
 No build step. Download the repo and open `index.html` in a browser.
