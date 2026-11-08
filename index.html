@@ -20,6 +20,12 @@ canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
 .label{display:block;margin-bottom:.45em;color:var(--mint);font-size:.68em;letter-spacing:.18em}
 .center{text-align:center}
 .right{text-align:right}
+#alertbar{margin-top:.55em;padding:.3em .5em .45em;border:1px solid currentColor;position:relative;font-weight:900;letter-spacing:.14em;display:flex;justify-content:space-between;gap:1em}
+#alertbar i{position:absolute;left:0;bottom:0;height:3px;background:currentColor;transition:width .2s linear}
+#alertbar[data-level="1"]{color:#ffd54a;background:#3a320b99}
+#alertbar[data-level="2"]{color:#ff9a3c;background:#3d220b99}
+#alertbar[data-level="3"]{color:#ff4a3a;background:#4a0f0bb0;animation:alertflash .5s steps(2) infinite}
+@keyframes alertflash{50%{background:#7a1610d0}}
 #signal{display:block;color:var(--amber);margin-top:.35em;font-size:.78em}
 #signal::before{content:"▲";display:inline-block;margin-right:.65em;transform:rotate(var(--bearing,0deg))}
 #reticle{position:absolute;left:50%;top:50%;width:3px;height:3px;transform:translate(-50%,-50%);background:#edf6e6;box-shadow:0 0 1px 1px #14201b}
@@ -59,7 +65,7 @@ main.touch #prompt kbd{display:none}
 @media (orientation:portrait) and (pointer:coarse){
   #rotate{display:grid;position:fixed;inset:0;z-index:9;place-items:center;background:#090e0ff2;color:var(--amber);font:900 18px monospace;letter-spacing:.12em;text-align:center;padding:24px}
 }
-#overlay{position:absolute;inset:0;z-index:3;display:grid;align-items:center;justify-items:start;padding:5%;background:linear-gradient(100deg,#0b1414f4 9%,#0b1414e8 35%,#10191862 100%)}
+#overlay{position:absolute;inset:0;z-index:3;display:grid;align-items:center;justify-items:center;padding:5%;background:radial-gradient(ellipse at center,#0b1414e8 30%,#0b1414b0 70%,#0b141470 100%)}
 article{width:min(100%,640px);max-height:100%;overflow:auto;padding:clamp(12px,3vw,38px);background:linear-gradient(120deg,#111f20f7,#0d1818ea);border:1px solid #a9d9bd43;border-left:3px solid var(--amber);box-shadow:0 14px 58px #060c0c70}
 h1{font-size:clamp(28px,7vw,88px);letter-spacing:-.075em;line-height:.93;margin:.14em 0 .24em;text-transform:uppercase}
 .eyebrow{color:var(--amber);letter-spacing:.18em;font:700 clamp(9px,1vw,13px) monospace}
@@ -111,7 +117,8 @@ article.scored .controls{display:none!important}
   <div id="hud">
     <div class="row">
       <div class="panel"><span class="label">MISSION / 06</span><span id="objective"></span></div>
-      <div class="panel center"><span id="bearing"></span><span id="signal"></span></div>
+      <div class="panel center"><span id="bearing"></span><span id="signal"></span>
+        <div id="alertbar" hidden><b></b><span></span><i></i></div></div>
       <div class="panel right"><span class="label">LOCATION</span>RELAY STATION</div>
     </div>
     <div id="reticle" aria-hidden="true"></div>
@@ -135,7 +142,7 @@ article.scored .controls{display:none!important}
     <article>
       <div class="eyebrow">FIELD OPERATIONS / RELAY STATION</div>
       <h1 id="title">BUNKER BUSTER</h1>
-      <p id="brief">Recover the orange intel case and return to the green extraction pad. Follow the corridors, or plant charges on cracked concrete to cut a shorter route. Each rifle shot removes one piece of concrete.</p>
+      <p id="brief">Recover the orange intel case and return to the green extraction pad. Stay unseen: crouch to move silently, and remember gunfire and blasts draw guards. If you are spotted, reinforcements arrive. Cracked concrete can be shot or blown apart to cut your own route.</p>
       <div class="scorewrap">
       <div id="results" hidden></div>
       <div>

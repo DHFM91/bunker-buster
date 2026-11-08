@@ -29,9 +29,10 @@ const prompt = document.querySelector("#prompt");
 const vm = document.querySelector("#viewmodel").getContext("2d");
 const VW = document.querySelector("#viewmodel").width, VH = 720, VS = VH/180;
 
-const columns=5, rows=7, room=5, stride=8, wallTop=9;
+const columns=7, rows=10, room=5, stride=8, wallTop=9;   // ~2x the original 5x7 rooms
 const X=(columns-1)*stride+room+2, Y=12, Z=(rows-1)*stride+room+2;
-const firstCell=2, lastCell=(rows-1)*columns+2;
+const midCol=Math.floor(columns/2);
+const firstCell=midCol, lastCell=(rows-1)*columns+midCol;
 const world = new Uint8Array(X * Y * Z);
 let colors = [[0,0,0], [76,82,75], [153,139,108], [66,83,84],
   [43,160,106], [229,143,47], [108,84,57], [124,112,92]];
@@ -117,10 +118,10 @@ function generateMaze(random) {
       const next=options[Math.floor(random()*options.length)];
       passages.push([cell,next]);
       distance[next]=distance[cell]+1;
-      if (col===2 && next%columns===2) centralOpen++;
+      if (col===midCol && next%columns===midCol) centralOpen++;
       route.push(next);
     }
-    if (distance[lastCell]>=20 && centralOpen<=3) return passages;
+    if (distance[lastCell]>=34 && centralOpen<=4) return passages;
   }
 
   // Bounded fallback keeps the same guarantees if the search finds no match.
@@ -145,7 +146,15 @@ function reset(random=Math.random) {
     const {x,z}=cellCenter(cell);
     box(x-room/2,1,z-room/2,x+room/2,wallTop,z+room/2,0);
   }
-  for (const [from,to] of generateMaze(random)) {
+  const passages=generateMaze(random);
+  // a few extra openings turn the perfect maze into loops, so sweeps and flanking routes exist
+  for (let k=0;k<Math.round(columns*rows*.08);k++) {
+    const cell=Math.floor(random()*columns*rows), right=random()<.5;
+    const col=cell%columns, row=Math.floor(cell/columns);
+    if (right && col<columns-1) passages.push([cell,cell+1]);
+    else if (!right && row<rows-1) passages.push([cell,cell+columns]);
+  }
+  for (const [from,to] of passages) {
     const a=cellCenter(from), b=cellCenter(to);
     box(Math.min(a.x,b.x)-room/2,1,Math.min(a.z,b.z)-room/2,
       Math.max(a.x,b.x)+room/2,wallTop,Math.max(a.z,b.z)+room/2,0);
@@ -155,12 +164,19 @@ function reset(random=Math.random) {
   box(padX-2,0,padZ-2,padX+3,1,padZ+3,4);
   box(intelX,1,intelZ,intelX+1,2,intelZ+1,6);
   Object.assign(player,{...extraction,eye:4.15,yaw:0,pitch:0,hp:100});
-  guards=[1,2,4,5].map((row,i)=>{
-    const col=random()<.5?1:3;
-    const {x,z}=cellCenter(row*columns+col);
-    return {x,z,home:x,yaw:i%2?Math.PI/2:-Math.PI/2,hp:2,gait:0,pace:0,impact:0,fall:0,shot:1+i*.35,alert:0,aim:0,spot:0,muzzle:0,investigate:0,query:0};
-  });
-  charges=7; reserve=96; magazine=24; reload=0; cooldown=0;
+  // Starting garrison: spread through the base, never in or beside the insertion room.
+  const taken=new Set();
+  guards=[];
+  for (let tries=0; guards.length<GARRISON && tries<400; tries++) {
+    const cell=Math.floor(random()*columns*rows);
+    const col=cell%columns, row=Math.floor(cell/columns);
+    if (taken.has(cell) || row<2 && Math.abs(col-midCol)<2) continue;
+    taken.add(cell);
+    const {x,z}=cellCenter(cell);
+    guards.push(makeGuard(x,z,cell,random()*6.28));
+  }
+  alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; chaseField=null; chaseTimer=0; stepTimer=0;
+  charges=10; reserve=144; magazine=24; reload=0; cooldown=0;
   flash=0; hurt=0; phase="ready"; hasIntel=false;
   notice=""; noticeTime=0; particles=[]; bullets=[];
   fallers=[]; pending.clear(); integrityTimer=0; shake=0; noise=null; charge=null; blast=null; stridePhase=0; sway=0;
@@ -268,6 +284,7 @@ function shoot() {
   if (!magazine) { reloadRifle(); return; }
   magazine--; cooldown=.21; flash=.075;
   tone(190,.14,.13,"sawtooth",33);
+  makeNoise(player.x,player.z,NOISE.gun,"gun");
   const [dx,dy,dz]=direction();
   const material=trace(player.x,player.eye,player.z,dx,dy,dz,60,hit);
   let closest=hit.t, target;
@@ -281,8 +298,9 @@ function shoot() {
     }
   }
   if (target) {
-    target.hp--; target.alert=5; target.impact=.19;
+    target.hp--; target.impact=.19;
     say(target.hp ? "HIT" : "HOSTILE DOWN");
+    if (target.hp) { target.yaw=Math.atan2(player.x-target.x,player.z-target.z); raiseTo(EVASION,player.x,player.z); }
   } else if (material===2 || material===7) {
     world[index(hit.x,hit.y,hit.z)]=0;
     if (material===2) run.blocks++;
@@ -368,9 +386,9 @@ function updateCharge(dt) {
   for (const g of guards) {
     if (!g.hp) continue;
     const gd=Math.hypot(g.x-bx,2.5-by,g.z-bz);
-    if (gd<6) { g.hp=Math.max(0,g.hp-(gd<4?2:1)); g.impact=.25; g.alert=Math.max(g.alert,2); }
+    if (gd<6) { g.hp=Math.max(0,g.hp-(gd<4?2:1)); g.impact=.25; }
   }
-  hearNoise(bx,bz,46);
+  makeNoise(bx,bz,NOISE.blast,"blast");
   for (let n=0; n<22; n++) {
     particles.push({x:x-dx*.35,y,z:z-dz*.35,vx:(Math.random()-.5)*3-dx*1.6,
       vy:Math.random()*1.8,vz:(Math.random()-.5)*3-dz*1.6,life:.95+Math.random()*.65,dust:true});
@@ -383,7 +401,7 @@ function updateCharge(dt) {
 // ===== Scoring =====
 // Time is king: a fast extraction is worth far more than anything else.
 // Damage taken shaves 1% off the subtotal per HP lost.
-const SCORE={extract:5000, timeBase:300, perSecond:100, guard:750, block:5};
+const SCORE={extract:5000, timeBase:480, perSecond:100, guard:750, block:5};
 function scoreRun(won) {
   const downed=guards.filter(g=>!g.hp).length;
   const damage=100-player.hp;
@@ -520,45 +538,28 @@ function update(dt,clock) {
   stridePhase+=travel*2.8;
   sway+=(Math.min(1,travel/(dt*5||1))-sway)*Math.min(1,dt*12);
   updateCharge(dt);
+  updateAlert(dt,travel,crouched);
   for (const guard of guards) {
     if (!guard.hp) { guard.fall=Math.min(1,guard.fall+dt*3.4); continue; }
     guard.impact=Math.max(0,guard.impact-dt);
     const oldX=guard.x, oldZ=guard.z;
     const dx=player.x-guard.x,dz=player.z-guard.z,dist=Math.hypot(dx,dz);
     const heading=Math.atan2(dx,dz);
-    const inView=Math.cos(heading-guard.yaw)>.35 || dist<2;
-    const sees=dist<23 && dist>.01 && (guard.alert || inView) &&
-      !trace(guard.x,3.75,guard.z,dx/dist,(player.eye-3.75)/dist,dz/dist,dist-.12,hit);
-    const wasAlert=guard.alert>0;
-    guard.alert=sees?4:Math.max(0,guard.alert-dt);
+    const sees=canSee(guard,dx,dz,dist,crouched);
     guard.spot=Math.max(0,guard.spot-dt);
-    if (sees && !wasAlert) {
-      // spotted: "!" over the head, two-note alert, and a reaction delay before the first shot
-      guard.spot=1.1;
-      guard.shot=Math.max(guard.shot,.45);
-      const v=Math.max(.02,.07-dist*.0018);
-      tone(620,.08,v,"square",620); tone(930,.13,v,"square",930,.09);
-    }
-    if (guard.alert) {
-      guard.yaw=heading;
-      if (dist>4 && !sees) move(guard,dx/dist*dt*2,dz/dist*dt*2,4.3);
-    } else if (guard.investigate>0) {
-      guard.investigate=Math.max(0,guard.investigate-dt);
-      guard.query=Math.max(0,guard.query-dt);
-      const target=noiseStep(guard);
-      if (target) {
-        const tx=target.x-guard.x, tz=target.z-guard.z, tl=Math.hypot(tx,tz)||1;
-        guard.yaw=Math.atan2(tx,tz);
-        move(guard,tx/tl*dt*2.6,tz/tl*dt*2.6,4.3);
-      } else guard.yaw+=dt*1.4;          // arrived: sweep the area
-      if (!guard.investigate) guard.home=guard.x;
-    } else {
-      const step=guard.home+Math.sin(clock*.7+guard.z)*2-guard.x;
-      if (Math.abs(step)>.08) {
-        guard.yaw=Math.sign(step)*Math.PI/2;
-        move(guard,Math.sign(step)*dt,0,4.3);
+    guard.query=Math.max(0,guard.query-dt);
+    if (sees) {
+      if (!guard.saw) {
+        // spotted: "!" over the head, two-note sting, and a beat before the first shot
+        guard.spot=1.1;
+        guard.shot=Math.max(guard.shot,.45);
+        const v=Math.max(.02,.07-dist*.0018);
+        tone(620,.08,v,"square",620); tone(930,.13,v,"square",930,.09);
       }
+      spottedBy(guard);
     }
+    guard.saw=sees;
+    thinkGuard(guard,dt,sees,heading,dist);
     const stepDistance=Math.hypot(guard.x-oldX,guard.z-oldZ);
     guard.gait+=stepDistance*7;
     guard.pace+=(Math.min(1,stepDistance/(dt||1))-guard.pace)*Math.min(1,dt*12);
@@ -704,13 +705,15 @@ function kickRubble(x,z) {
   if (k) integrityTimer=integrityTimer||.05;
 }
 
-// ===== Noise: one flow field per explosion, shared by every guard =====
+// ===== Pathing: breadth-first "flow fields" over the floor grid =====
+// A field stores walking distance (in voxels) from a target to every reachable cell, so any number
+// of guards can follow it downhill to the target. One BFS over the whole base is ~4k cells.
 function walkable(x,z) { return x>0 && z>0 && x<X-1 && z<Z-1 && !tile(x,1,z) && !tile(x,2,z) && !tile(x,3,z) && !tile(x,4,z); }
-function hearNoise(x,z,radius) {
+function flowField(x,z,radius=9999) {
   const field=new Int16Array(X*Z).fill(-1);
   const sx=Math.floor(x), sz=Math.floor(z);
   const queue=[];
-  // the blast cell itself might still be solid; seed from the nearest open cells
+  // the target cell itself might be solid (a blast inside a wall); seed from the nearest open cells
   for (let r=0;r<4 && !queue.length;r++)
     for (let dz=-r;dz<=r;dz++) for (let dx=-r;dx<=r;dx++)
       if (walkable(sx+dx,sz+dz) && field[(sz+dz)*X+sx+dx]<0) { field[(sz+dz)*X+sx+dx]=0; queue.push((sz+dz)*X+sx+dx); }
@@ -720,23 +723,186 @@ function hearNoise(x,z,radius) {
     for (const [nx,nz] of [[cx+1,cz],[cx-1,cz],[cx,cz+1],[cx,cz-1]])
       if (walkable(nx,nz) && field[nz*X+nx]<0) { field[nz*X+nx]=d+1; queue.push(nz*X+nx); }
   }
-  noise={field};
-  for (const g of guards) {
-    if (!g.hp || g.alert) continue;
-    const d=field[Math.floor(g.z)*X+Math.floor(g.x)];
-    if (d>=0) { g.investigate=9+Math.random()*3; g.query=1.4; tone(440,.09,.03,"square",520,.25); }
-  }
+  return field;
 }
-function noiseStep(g) {
-  if (!noise) return null;
-  const f=noise.field, cx=Math.floor(g.x), cz=Math.floor(g.z), here=f[cz*X+cx];
-  if (here<0 || here<=2) return null;
+const fieldAt=(f,x,z)=>f[Math.floor(z)*X+Math.floor(x)];
+// Walk one step down a field. Returns true once the guard has arrived (or can't reach it).
+function followField(g,f,speed,dt,arrive=2) {
+  const cx=Math.floor(g.x), cz=Math.floor(g.z), here=f[cz*X+cx];
+  if (here<0 || here<=arrive) return true;
   let best=null, bd=here;
   for (const [nx,nz] of [[cx+1,cz],[cx-1,cz],[cx,cz+1],[cx,cz-1]]) {
     const d=f[nz*X+nx];
-    if (d>=0 && d<bd) { bd=d; best={x:nx+.5,z:nz+.5}; }
+    if (d>=0 && d<bd) { bd=d; best=[nx+.5,nz+.5]; }
+  }
+  if (!best) return true;
+  const tx=best[0]-g.x, tz=best[1]-g.z, tl=Math.hypot(tx,tz)||1;
+  const want=Math.atan2(tx,tz);
+  g.yaw+=Math.atan2(Math.sin(want-g.yaw),Math.cos(want-g.yaw))*Math.min(1,dt*8);
+  move(g,tx/tl*dt*speed,tz/tl*dt*speed,4.3);
+  return false;
+}
+
+// ===== Alert phases (tactical espionage style) =====
+// 0 UNDETECTED: lazy patrols.  1 CAUTION: a gunshot/blast was heard; listeners converge on it.
+// 2 EVASION: they know you're here but not where; they split up and sweep the base, ears open.
+// 3 ALERT: you've been seen; everyone closes on you and reinforcements arrive at the edges.
+const UNDETECTED=0, CAUTION=1, EVASION=2, ALERT=3;
+const PHASE=[
+  {name:"UNDETECTED", speed:1.15, range:15, fov:.55, hear:4, time:0},
+  {name:"CAUTION",    speed:1.9,  range:19, fov:.35, hear:6, time:25},
+  {name:"EVASION",    speed:2.6,  range:23, fov:.15, hear:10, time:30},
+  {name:"ALERT",      speed:3.1,  range:26, fov:-.3, hear:14, time:12},
+];
+const NOISE={gun:24, blast:46};
+const GARRISON=9, REINFORCEMENTS=5, MAX_GUARDS=20;
+let alertLevel=0, alertTimer=0, lastKnown=null, reinforced=false, chaseField=null, chaseTimer=0, stepTimer=0;
+const alertEl=document.querySelector("#alertbar");
+
+function makeGuard(x,z,cell,yaw) {
+  return {x,z,cell,yaw,hp:2,gait:0,pace:0,impact:0,fall:0,shot:1.5,aim:0,spot:0,muzzle:0,query:0,saw:false,
+    task:"idle",wait:1+Math.random()*3,goal:null,field:null};
+}
+function canSee(g,dx,dz,dist,crouched) {
+  const P=PHASE[alertLevel];
+  const range=P.range*(crouched && alertLevel<ALERT?.62:1);
+  if (dist>range || dist<.01) return false;
+  const facing=Math.cos(Math.atan2(dx,dz)-g.yaw);
+  if (facing<P.fov && dist>2.2) return false;
+  return !trace(g.x,3.75,g.z,dx/dist,(player.eye-3.75)/dist,dz/dist,dist-.12,hit);
+}
+function setPhase(level) {
+  if (level===alertLevel) { alertTimer=PHASE[level].time; return; }
+  const rising=level>alertLevel;
+  alertLevel=level; alertTimer=PHASE[level].time;
+  for (const g of guards) if (g.hp) { g.task="idle"; g.wait=rising?0:.5+Math.random(); g.goal=null; }
+  if (level===ALERT) {
+    say("!! ALERT !!  REINFORCEMENTS INBOUND");
+    for (let k=0;k<3;k++) { tone(880,.16,.06,"square",880,k*.36); tone(660,.16,.06,"square",660,k*.36+.18); }
+    if (!reinforced) { reinforced=true; spawnReinforcements(); }
+  } else if (level===EVASION) say(rising?"EVASION · THEY KNOW YOU'RE HERE":"EVASION · THEY LOST YOU");
+  else if (level===CAUTION) say(rising?"CAUTION · SOMETHING WAS HEARD":"CAUTION · STAND DOWN SOON");
+  else { say("UNDETECTED"); reinforced=false; }
+}
+function raiseTo(level,x,z) {
+  if (x!==undefined) lastKnown={x,z};
+  if (level>=alertLevel) setPhase(level);
+}
+function spottedBy(g) {
+  lastKnown={x:player.x,z:player.z};
+  if (alertLevel<ALERT) setPhase(ALERT); else alertTimer=PHASE[ALERT].time;
+}
+// Reinforcements enter from rooms on the outer ring that the player can't see and isn't near.
+function spawnReinforcements() {
+  const living=guards.filter(g=>g.hp).length;
+  let count=Math.min(REINFORCEMENTS,MAX_GUARDS-living);
+  const pf=flowField(player.x,player.z);
+  const ring=[];
+  for (let cell=0;cell<columns*rows;cell++) {
+    const col=cell%columns, row=Math.floor(cell/columns);
+    if (col!==0 && col!==columns-1 && row!==0 && row!==rows-1) continue;
+    const c=cellCenter(cell), d=fieldAt(pf,c.x,c.z);
+    const dx=c.x-player.x, dz=c.z-player.z, dl=Math.hypot(dx,dz);
+    const visible=!trace(player.x,player.eye,player.z,dx/dl,(3-player.eye)/dl,dz/dl,dl-.3,hit);
+    if (d<0 || visible) continue;
+    ring.push({cell,c,d});
+  }
+  ring.sort((a,b)=>b.d-a.d);                 // farthest-walk rooms first, then shuffle the top picks
+  const pool=ring.filter(r=>r.d>=28); const picks=(pool.length>=count?pool:ring).slice(0,count*2);
+  for (let i=picks.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [picks[i],picks[j]]=[picks[j],picks[i]]; }
+  for (const r of picks.slice(0,count)) {
+    const g=makeGuard(r.c.x+(Math.random()-.5),r.c.z+(Math.random()-.5),r.cell,0);
+    g.wait=0; g.shot=2; guards.push(g);
+  }
+}
+// Noise: a gunshot or blast pulls listeners in; footsteps only matter to guards close by.
+function makeNoise(x,z,radius,kind) {
+  const f=flowField(x,z,radius);
+  const listeners=guards.filter(g=>g.hp && fieldAt(f,g.x,g.z)>=0);
+  if (!listeners.length) return;
+  // escalate first (a phase change re-tasks everyone), then send the listeners to the sound
+  if (kind==="step") {
+    if (alertLevel===EVASION) { lastKnown={x,z}; alertTimer=PHASE[EVASION].time; }
+  } else {
+    tone(440,.09,.03,"square",520,.25);
+    if (alertLevel===ALERT) lastKnown={x,z};
+    else raiseTo(alertLevel===EVASION?EVASION:CAUTION,x,z);
+  }
+  if (alertLevel<ALERT) for (const g of listeners) {
+    g.task="investigate"; g.field=f; g.goal={x,z}; g.wait=0;
+    if (!g.saw) g.query=1.4;
+  }
+}
+function updateAlert(dt,travel,crouched) {
+  // footsteps: running is loud, crouch-walking is silent
+  stepTimer-=dt;
+  if (travel>dt*2 && !crouched && stepTimer<=0) {
+    stepTimer=.45;
+    const r=PHASE[alertLevel].hear;
+    if (guards.some(g=>g.hp && Math.abs(g.x-player.x)<r+2 && Math.abs(g.z-player.z)<r+2)) makeNoise(player.x,player.z,r,"step");
+  }
+  if (alertLevel===ALERT) {
+    chaseTimer-=dt;
+    if (chaseTimer<=0 && lastKnown) { chaseTimer=.5; chaseField=flowField(lastKnown.x,lastKnown.z); }
+  }
+  if (alertLevel>UNDETECTED) {
+    const seen=guards.some(g=>g.hp && g.saw);
+    if (!(alertLevel===ALERT && seen)) alertTimer-=dt;
+    if (alertTimer<=0) setPhase(alertLevel-1);
+  }
+  // HUD readout
+  if (alertLevel===UNDETECTED) alertEl.hidden=true;
+  else {
+    alertEl.hidden=false;
+    alertEl.dataset.level=alertLevel;
+    alertEl.querySelector("b").textContent=PHASE[alertLevel].name;
+    alertEl.querySelector("span").textContent=alertTimer.toFixed(1);
+    alertEl.querySelector("i").style.width=Math.max(0,alertTimer/PHASE[alertLevel].time*100)+"%";
+  }
+}
+// pick a room for a patrol (near home) or a sweep (spread out, biased toward the last known spot)
+function pickRoom(g,mode) {
+  if (mode==="patrol") {
+    const col=g.cell%columns, row=Math.floor(g.cell/columns);
+    const c=Math.max(0,Math.min(columns-1,col+Math.floor(Math.random()*5)-2));
+    const r=Math.max(0,Math.min(rows-1,row+Math.floor(Math.random()*5)-2));
+    return cellCenter(r*columns+c);
+  }
+  const claimed=guards.filter(o=>o!==g && o.goal).map(o=>o.goal);
+  let best=null, bestScore=-1e9;
+  for (let k=0;k<12;k++) {
+    const c=cellCenter(Math.floor(Math.random()*columns*rows));
+    const near=lastKnown?Math.hypot(c.x-lastKnown.x,c.z-lastKnown.z):0;
+    const spread=claimed.reduce((m,o)=>Math.min(m,Math.hypot(c.x-o.x,c.z-o.z)),99);
+    const score=Math.min(spread,24)*1.2-near*.6+Math.random()*6;
+    if (score>bestScore) { bestScore=score; best=c; }
   }
   return best;
+}
+function thinkGuard(g,dt,sees,heading,dist) {
+  const P=PHASE[alertLevel];
+  if (alertLevel===ALERT) {
+    if (sees) { g.yaw=heading; if (dist>9) move(g,Math.sin(heading)*dt*P.speed*.6,Math.cos(heading)*dt*P.speed*.6,4.3); return; }
+    if (chaseField && !followField(g,chaseField,P.speed,dt,1)) return;
+    g.yaw+=dt*2.2;   // reached the last known spot: scan
+    return;
+  }
+  if (g.task==="investigate" && g.field) {
+    if (!followField(g,g.field,P.speed+.6,dt)) return;
+    g.task="search"; g.wait=alertLevel===EVASION?2:4+Math.random()*2; g.field=null;
+  }
+  if (g.task==="walk" && g.field) {
+    if (!followField(g,g.field,P.speed,dt)) return;
+    g.task="search"; g.wait=alertLevel===EVASION?1.5+Math.random():2+Math.random()*3; g.field=null;
+  }
+  // idle / searching: look around, then pick the next room
+  g.wait-=dt;
+  g.yaw+=dt*(alertLevel===UNDETECTED?.5:1.6)*Math.sin(g.wait*1.7+g.x);
+  if (g.wait>0) return;
+  const target=pickRoom(g,alertLevel===EVASION?"sweep":"patrol");
+  const f=flowField(target.x,target.z);
+  if (fieldAt(f,g.x,g.z)<0) { g.wait=1; return; }
+  g.goal=target; g.field=f; g.task="walk";
 }
 
 function fireBullet(guard,dist,crouched) {
@@ -1112,7 +1278,7 @@ function render(clock) {
         return star?[255,200,160,a[3]+.4*t]:a;
       });
     }
-    if (g.hp && g.query>0 && !g.spot) {
+    if (g.hp && g.query>0 && !g.spot) {   // "?" heard something
       sprite(g.x,4.6,g.z,.42,.62,(u,v)=>{
         if (u<0||u>1||v<0||v>1) return;
         const px=(u*3)|0, py=(v*5)|0;   // 3x5 "?" glyph

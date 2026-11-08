@@ -9,7 +9,14 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 - Each rifle shot knocks out one block of cracked concrete. Breach charges blow out whole sections.
 - Concrete can only reach so far without support. Blast a big enough hole and the wall above it cracks and falls in pieces, leaving rubble piles. Falling debris hurts.
 - Back off after you plant a charge, because the blast hurts you too.
-- Guards come to check out explosions. When one spots you he calls out ("!"), raises his rifle and fires a round you can see. Keep moving and you can dodge it.
+- The base is a large random maze (7 × 10 rooms), so a run is a real trek.
+- Guards follow four alert phases:
+  - **Undetected:** lazy patrols near their posts.
+  - **Caution:** a gunshot or blast was heard, and the guards who heard it converge on the sound.
+  - **Evasion:** they know you're here but not where. They split up and sweep the base, listening for footsteps.
+  - **Alert:** you've been seen. Every guard closes in, and 5 reinforcements arrive from the edges of the map.
+- Crouch to move silently and to be harder to spot. Running footsteps can be heard nearby.
+- When a guard spots you he calls out ("!"), raises his rifle and fires a round you can see. Keep moving and you can dodge it.
 
 ## Controls
 | Desktop | Phone / tablet (landscape) |
