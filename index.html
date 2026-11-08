@@ -27,7 +27,9 @@ canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
 #alertbar[data-level="3"]{color:#ff4a3a;background:#4a0f0bb0;animation:alertflash .5s steps(2) infinite}
 @keyframes alertflash{50%{background:#7a1610d0}}
 #signal{display:block;color:var(--amber);margin-top:.35em;font-size:.78em}
-#signal::before{content:"▲";display:inline-block;margin-right:.65em;transform:rotate(var(--bearing,0deg))}
+/* objective pointer: a real arrow (head + shaft) so the front reads instantly */
+#signal::before{content:"";display:inline-block;width:1.9em;height:1.9em;margin:-.55em .55em -.55em 0;vertical-align:middle;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.5 22 12.5h-6.2V22.5H8.2V12.5H2Z' fill='%23f2b76b' stroke='%230b1414' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;transform:rotate(var(--bearing,0deg));filter:drop-shadow(0 0 3px #f2b76b88)}
 #reticle{position:absolute;left:50%;top:50%;width:3px;height:3px;transform:translate(-50%,-50%);background:#edf6e6;box-shadow:0 0 1px 1px #14201b}
 #reticle::before,#reticle::after{content:"";position:absolute;background:#edf6e699}
 #reticle::before{width:10px;height:1px;top:1px;left:-13px}
@@ -109,7 +111,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js?v=4"></script>
+<script defer src="bunker-buster.js?v=5"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">

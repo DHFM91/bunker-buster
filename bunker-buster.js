@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v4";
+const VERSION = "v5";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones get a render buffer matching their wider screen shape (same height, more width = wider view).

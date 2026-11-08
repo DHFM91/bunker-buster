@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v5:** clearer objective arrow on the compass (proper head and shaft instead of a small triangle).
 - **v4:** four alert phases (Undetected, Caution, Evasion, Alert) with reinforcements; map doubled to 7 × 10 rooms; centred menus; more ammo and charges.
 - **v3:** global top-10 leaderboard connected.
 - **v2:** new random colour scheme on every deploy; itemised scoring (time, soldiers, concrete, damage penalty).
