@@ -1,20 +1,23 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v5";
+const VERSION = "v6";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
-// Phones get a render buffer matching their wider screen shape (same height, more width = wider view).
+// Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
+// Portrait puts a 4:3 view on top with a control deck underneath; landscape fills the screen.
 const touchDevice=matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints>0 && !matchMedia("(pointer: fine)").matches;
+const isPortrait=()=>innerHeight>innerWidth;
+const touchAspect=()=>isPortrait()?4/3:Math.max(16/9,Math.min(2.4,innerWidth/(innerHeight||1)));
 if (touchDevice) {
-  const long=Math.max(innerWidth,innerHeight), short=Math.min(innerWidth,innerHeight)||1;
-  const aspect=Math.max(16/9,Math.min(2.4,long/short));
+  const aspect=touchAspect();
   screen.width=Math.round(180*aspect/2)*2;
   document.querySelector("#viewmodel").width=Math.round(720*aspect);
 }
-const width = screen.width, height = screen.height;
-const image = ctx.createImageData(width, height);
-const pixels = image.data;
+let width = screen.width;
+const height = screen.height;
+let image = ctx.createImageData(width, height);
+let pixels = image.data;
 const overlay = document.querySelector("#overlay");
 const title = document.querySelector("#title");
 const brief = document.querySelector("#brief");
@@ -29,7 +32,8 @@ const healthFill = document.querySelector("#health-fill");
 const chargeFill = document.querySelector("#charge-fill");
 const prompt = document.querySelector("#prompt");
 const vm = document.querySelector("#viewmodel").getContext("2d");
-const VW = document.querySelector("#viewmodel").width, VH = 720, VS = VH/180;
+let VW = document.querySelector("#viewmodel").width;
+const VH = 720, VS = VH/180;
 
 const columns=7, rows=10, room=5, stride=8, wallTop=9;   // ~2x the original 5x7 rooms
 const X=(columns-1)*stride+room+2, Y=12, Z=(rows-1)*stride+room+2;
@@ -921,7 +925,7 @@ function fireBullet(guard,dist,crouched) {
   bullets.push({x:sx,y:sy,z:sz,vx:dx/d*bulletSpeed,vy:dy/d*bulletSpeed,vz:dz/d*bulletSpeed,life:3});
 }
 
-const depth = new Float32Array(width*height);
+let depth = new Float32Array(width*height);
 const ray = {};
 const focal = height*145/126;   // tied to height so wide screens see more, not zoom in
 const faceLight = [.72,1,.87];
@@ -1532,17 +1536,34 @@ if (isTouch) {
   stick.addEventListener("pointerdown",e=>{ e.preventDefault(); stickId=e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch {} setStick(e); });
   stick.addEventListener("pointermove",e=>{ if (e.pointerId===stickId) setStick(e); });
   stick.addEventListener("pointerup",endStick); stick.addEventListener("pointercancel",endStick);
-  const look=document.querySelector("#look");
-  look.addEventListener("pointerdown",e=>{ e.preventDefault(); lookId=e.pointerId; lastX=e.clientX; lastY=e.clientY; try { look.setPointerCapture(e.pointerId); } catch {} });
-  look.addEventListener("pointermove",e=>{
-    if (e.pointerId!==lookId || phase!=="playing") return;
-    const k=1.55*320/screen.getBoundingClientRect().width*.0105;   // same feel on any screen size
-    player.yaw+=(e.clientX-lastX)*k;
-    player.pitch=Math.max(-1.12,Math.min(1.12,player.pitch-(e.clientY-lastY)*k));
-    lastX=e.clientX; lastY=e.clientY;
-  });
-  const endLook=e=>{ if (e.pointerId===lookId) lookId=null; };
-  look.addEventListener("pointerup",endLook); look.addEventListener("pointercancel",endLook);
+  // aim by dragging: the right side in landscape; the view itself or the free deck area in portrait
+  for (const look of document.querySelectorAll(".look")) {
+    look.addEventListener("pointerdown",e=>{ e.preventDefault(); lookId=e.pointerId; lastX=e.clientX; lastY=e.clientY; try { look.setPointerCapture(e.pointerId); } catch {} });
+    look.addEventListener("pointermove",e=>{
+      if (e.pointerId!==lookId || phase!=="playing") return;
+      const k=.0068;                                   // radians per CSS pixel, same feel on any phone
+      player.yaw+=(e.clientX-lastX)*k;
+      player.pitch=Math.max(-1.12,Math.min(1.12,player.pitch-(e.clientY-lastY)*k));
+      lastX=e.clientX; lastY=e.clientY;
+    });
+    const endLook=e=>{ if (e.pointerId===lookId) lookId=null; };
+    look.addEventListener("pointerup",endLook); look.addEventListener("pointercancel",endLook);
+  }
+  // re-layout on rotation: switch portrait/landscape and resize the render buffers to match
+  const main=document.querySelector("main");
+  const relayout=()=>{
+    const portrait=isPortrait();
+    main.classList.toggle("portrait",portrait);
+    main.style.setProperty("--vh",portrait?Math.round(innerWidth*.75)+"px":"100%");
+    const aspect=touchAspect(), w=Math.round(180*aspect/2)*2;
+    if (w!==width) {
+      screen.width=width=w;
+      image=ctx.createImageData(width,height); pixels=image.data; depth=new Float32Array(width*height);
+      const vmCanvas=document.querySelector("#viewmodel"); vmCanvas.width=VW=Math.round(720*aspect);
+    }
+  };
+  addEventListener("resize",relayout); addEventListener("orientationchange",()=>setTimeout(relayout,120));
+  relayout();
   const button=(id,down,up)=>{
     const el=document.querySelector(id);
     el.addEventListener("pointerdown",e=>{ e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch {} if (phase==="playing") down(el); });

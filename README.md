@@ -19,17 +19,18 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 - When a guard spots you he calls out ("!"), raises his rifle and fires a round you can see. Keep moving and you can dodge it.
 
 ## Controls
-| Desktop | Phone / tablet (landscape) |
+| Desktop | Phone / tablet (portrait or landscape) |
 |---|---|
 | WASD: move | Left stick: move |
-| Mouse: aim | Drag the right side of the screen: aim |
+| Mouse: aim | Drag the view (or the free deck area / right side): aim |
 | Click: fire | FIRE (hold) |
 | Q: plant charge | PLANT |
-| R: reload | RLD |
+| R: reload | RELOAD |
 | C: crouch | DUCK |
 | Esc: pause | II |
 
 ## Version history
+- **v6:** playable in portrait on phones (game view on top, control deck below); landscape adapts on rotation; clearer RELOAD button; steadier touch aiming.
 - **v5:** clearer objective arrow on the compass (proper head and shaft instead of a small triangle).
 - **v4:** four alert phases (Undetected, Caution, Evasion, Alert) with reinforcements; map doubled to 7 × 10 rooms; centred menus; more ammo and charges.
 - **v3:** global top-10 leaderboard connected.
