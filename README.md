@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v9:** start-screen notice that the game plays much better on desktop than on mobile; global leaderboard reads correctly again.
 - **v8:** FIRE moved right next to the look stick and now aims too (hold and slide); fixed the global leaderboard showing "offline" when the score host adds extra text to its reply.
 - **v7:** new touch controls in the style of QUACK: twin floating sticks (move on the left, look on the right) that appear under your thumbs, FIRE above the look stick, and no stuck controls when a finger slips off.
 - **v6:** playable in portrait on phones (game view on top, control deck below); landscape adapts on rotation; clearer RELOAD button; steadier touch aiming.

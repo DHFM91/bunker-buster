@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v8";
+const VERSION = "v9";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -1644,6 +1644,7 @@ function pauseTouch() {
 }
 
 deploy.addEventListener("click",()=>{
+  document.querySelector("#device-note").hidden=true;   // start-screen notice only
   if (phase==="won" || phase==="lost") { reset(); resultsEl.hidden=entryEl.hidden=boardEl.hidden=true; lastResult=null; overlay.querySelector("article").classList.remove("scored"); }
   const Audio = window.AudioContext || window.webkitAudioContext;
   if (Audio) {

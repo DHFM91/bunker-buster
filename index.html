@@ -63,6 +63,8 @@ main.touch.portrait #prompt{bottom:12%}
 #overlay{position:absolute;inset:0;z-index:3;display:grid;align-items:center;justify-items:center;padding:5%;background:radial-gradient(ellipse at center,#0b1414e8 30%,#0b1414b0 70%,#0b141470 100%)}
 article{width:min(100%,640px);max-height:100%;overflow:auto;padding:clamp(12px,3vw,38px);background:linear-gradient(120deg,#111f20f7,#0d1818ea);border:1px solid #a9d9bd43;border-left:3px solid var(--amber);box-shadow:0 14px 58px #060c0c70}
 h1{font-size:clamp(28px,7vw,88px);letter-spacing:-.075em;line-height:.93;margin:.14em 0 .24em;text-transform:uppercase}
+#device-note{margin:0 0 .9em;padding:.6em .8em;background:#f2b76b;color:#0b1414;font:900 clamp(12px,1.5vw,17px) monospace;letter-spacing:.06em;border-radius:3px}
+#device-note[hidden]{display:none}
 .eyebrow{color:var(--amber);letter-spacing:.18em;font:700 clamp(9px,1vw,13px) monospace}
 p{max-width:53ch;color:#ccd5ca;margin:.7em 0 1.15em;line-height:1.5}
 .controls{display:flex;flex-wrap:wrap;gap:.45em .9em;color:#c2cfc3;margin:1.2em 0 0;font:700 clamp(9px,1vw,12px) monospace}
@@ -104,7 +106,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js?v=8"></script>
+<script defer src="bunker-buster.js?v=9"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">
@@ -128,6 +130,7 @@ article.scored .controls{display:none!important}
   <canvas id="touch" hidden></canvas>
   <section id="overlay">
     <article>
+      <div id="device-note" role="alert">⚠ Plays MUCH better on desktop than mobile.</div>
       <div class="eyebrow">FIELD OPERATIONS / RELAY STATION</div>
       <h1 id="title">BUNKER BUSTER</h1>
       <p id="brief">Recover the orange intel case and return to the green extraction pad. Stay unseen: crouch to move silently, and remember gunfire and blasts draw guards. If you are spotted, reinforcements arrive. Cracked concrete can be shot or blown apart to cut your own route.</p>
