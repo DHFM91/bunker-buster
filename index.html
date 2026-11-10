@@ -46,18 +46,7 @@ canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
 [hidden]{display:none!important}
 /* ---- touch controls ---- */
 main{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-#touch{position:absolute;inset:0;z-index:2;font:900 clamp(10px,1.6vw,15px) monospace;letter-spacing:.08em}
-#look{position:absolute;inset:0 0 0 42%}
-#look-view{display:none}
-#stick{position:absolute;left:3.5%;bottom:7%;width:clamp(96px,19%,170px);aspect-ratio:1;border-radius:50%;background:#0b141466;border:2px solid #a9d9bd55}
-#nub{position:absolute;left:50%;top:50%;width:42%;aspect-ratio:1;border-radius:50%;background:#a9d9bd55;border:2px solid #a9d9bdaa;transform:translate(-50%,-50%)}
-.tbtn{position:absolute;display:grid;place-items:center;border-radius:50%;background:#0b1414a8;border:2px solid #a9d9bd70;color:#e5e8d9;text-shadow:0 1px 2px #000}
-.tbtn.on,.tbtn:active{background:#f2b76b55;border-color:var(--amber)}
-#t-fire{right:4%;bottom:9%;width:clamp(78px,14%,140px);aspect-ratio:1;border-color:#f2b76bcc;color:#ffdc9e}
-#t-plant{right:20%;bottom:6%;width:clamp(54px,9.5%,96px);aspect-ratio:1}
-#t-reload{right:19%;bottom:31%;width:clamp(54px,9%,90px);aspect-ratio:1;font-size:.82em}
-#t-crouch{right:4.5%;bottom:47%;width:clamp(50px,8.5%,86px);aspect-ratio:1}
-#t-pause{left:34%;top:3%;width:clamp(34px,5.5%,56px);aspect-ratio:1;border-radius:6px}
+#touch{position:absolute;inset:0;width:100%;height:100%;z-index:2;touch-action:none}
 main.touch{width:100vw;height:100dvh;aspect-ratio:auto}
 main.touch #hud{grid-template-rows:auto auto 1fr}
 main.touch .row.bottom{grid-row:2;margin-top:.5em;align-items:flex-start;padding:0 calc(5.5% + 1em) 0 0}
@@ -70,15 +59,6 @@ main.touch.portrait{background:linear-gradient(to bottom,#192322 var(--vh),#0c15
 main.touch.portrait #screen,main.touch.portrait #viewmodel{position:absolute;top:0;left:0;width:100%;height:var(--vh)}
 main.touch.portrait #hud{bottom:auto;height:var(--vh);font-size:clamp(9px,2.6vw,13px)}
 main.touch.portrait .row.bottom{position:absolute;left:3vw;right:3vw;top:calc(100% + 3vw);margin:0;padding:0;font-size:clamp(11px,3.3vw,15px)}
-main.touch.portrait #look{inset:var(--vh) 0 0 0}
-main.touch.portrait #look-view{display:block;position:absolute;left:0;right:0;top:0;height:var(--vh)}
-main.touch.portrait #touch{font-size:clamp(11px,3.4vw,16px)}
-main.touch.portrait #stick{left:5vw;bottom:calc(4vh + 3vw);width:40vw}
-main.touch.portrait #t-fire{right:5vw;bottom:5vh;width:27vw}
-main.touch.portrait #t-reload{right:36vw;bottom:4vh;width:19vw;font-size:.78em}
-main.touch.portrait #t-plant{right:36vw;bottom:calc(4vh + 22vw);width:19vw}
-main.touch.portrait #t-crouch{right:9vw;bottom:calc(5vh + 31vw);width:19vw}
-main.touch.portrait #t-pause{left:50%;top:auto;bottom:calc(5vh + 52vw);transform:translateX(-50%);width:11vw}
 main.touch.portrait #prompt{bottom:12%}
 #overlay{position:absolute;inset:0;z-index:3;display:grid;align-items:center;justify-items:center;padding:5%;background:radial-gradient(ellipse at center,#0b1414e8 30%,#0b1414b0 70%,#0b141470 100%)}
 article{width:min(100%,640px);max-height:100%;overflow:auto;padding:clamp(12px,3vw,38px);background:linear-gradient(120deg,#111f20f7,#0d1818ea);border:1px solid #a9d9bd43;border-left:3px solid var(--amber);box-shadow:0 14px 58px #060c0c70}
@@ -124,7 +104,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js?v=6"></script>
+<script defer src="bunker-buster.js?v=7"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">
@@ -145,16 +125,7 @@ article.scored .controls{display:none!important}
       <div class="panel right"><span class="label">CARBINE / BREACH KIT</span><span id="ammo"></span></div>
     </div>
   </div>
-  <div id="touch" hidden>
-    <div id="look" class="look"></div>
-    <div id="look-view" class="look"></div>
-    <div id="stick"><div id="nub"></div></div>
-    <div class="tbtn" id="t-fire">FIRE</div>
-    <div class="tbtn" id="t-plant">PLANT</div>
-    <div class="tbtn" id="t-reload">RELOAD</div>
-    <div class="tbtn" id="t-crouch">DUCK</div>
-    <div class="tbtn" id="t-pause">II</div>
-  </div>
+  <canvas id="touch" hidden></canvas>
   <section id="overlay">
     <article>
       <div class="eyebrow">FIELD OPERATIONS / RELAY STATION</div>
@@ -177,7 +148,7 @@ article.scored .controls{display:none!important}
         <span><kbd>Q</kbd> Plant</span><span><kbd>R</kbd> Reload</span><span><kbd>C</kbd> Crouch</span><span><kbd>Esc</kbd> Pause</span>
       </div>
       <div class="controls" id="touch-help" hidden aria-label="Touch controls">
-        <span><kbd>Left stick</kbd> Move</span><span><kbd>Drag the view</kbd> Aim</span><span><kbd>FIRE</kbd> hold to shoot</span>
+        <span><kbd>Left thumb</kbd> Move</span><span><kbd>Right thumb</kbd> Look</span><span><kbd>FIRE</kbd> hold to shoot</span>
         <span><kbd>PLANT</kbd> Charge</span><span><kbd>RELOAD</kbd> Reload</span><span><kbd>DUCK</kbd> Crouch</span>
       </div>
     </article>

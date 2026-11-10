@@ -21,8 +21,8 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 ## Controls
 | Desktop | Phone / tablet (portrait or landscape) |
 |---|---|
-| WASD: move | Left stick: move |
-| Mouse: aim | Drag the view (or the free deck area / right side): aim |
+| WASD: move | Left thumb anywhere on the left half: MOVE stick |
+| Mouse: aim | Right thumb anywhere on the right half: LOOK stick (hold to keep turning) |
 | Click: fire | FIRE (hold) |
 | Q: plant charge | PLANT |
 | R: reload | RELOAD |
@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v7:** new touch controls in the style of QUACK: twin floating sticks (move on the left, look on the right) that appear under your thumbs, FIRE above the look stick, and no stuck controls when a finger slips off.
 - **v6:** playable in portrait on phones (game view on top, control deck below); landscape adapts on rotation; clearer RELOAD button; steadier touch aiming.
 - **v5:** clearer objective arrow on the compass (proper head and shaft instead of a small triangle).
 - **v4:** four alert phases (Undetected, Caution, Evasion, Alert) with reinforcements; map doubled to 7 × 10 rooms; centred menus; more ammo and charges.
