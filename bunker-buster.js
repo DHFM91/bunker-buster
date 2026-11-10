@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v7";
+const VERSION = "v8";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -460,7 +460,11 @@ async function lbRequest(opts) {
   } finally { clearTimeout(t); }
 }
 async function fetchBoard() {
-  try { board=cleanBoard(await (await lbRequest({})).json()); lbOnline=true; }
+  // The bin host sometimes tacks a web page onto the end of the reply, so read only the JSON part.
+  try {
+    const text=await (await lbRequest({})).text(), cut=text.indexOf("<");
+    board=cleanBoard(JSON.parse(cut<0?text:text.slice(0,cut))); lbOnline=true;
+  }
   catch { lbOnline=false; }
 }
 const qualifies=score=>score>0 && (board.length<LB_SIZE || score>board[board.length-1][1]);
@@ -1516,7 +1520,7 @@ function drawPlant(progress) {
 // ===== Touch controls (phones/tablets), same scheme as QUACK =====
 // One full-screen layer takes every finger. Left half: a MOVE stick appears wherever your thumb lands.
 // Right half: a LOOK stick that keeps turning while held (gentle near the middle, fast at full tilt).
-// FIRE sits just above the look stick's resting spot; RELOAD, PLANT and DUCK sit beside it.
+// FIRE hugs the look stick and also aims while held; RELOAD, PLANT and DUCK sit beside it.
 // A new finger always takes over its half, so a lost touch can never leave a control stuck.
 const isTouch=touchDevice;
 const touchMove={x:0,y:0};
@@ -1539,12 +1543,14 @@ function touchLayout() {
   const R=Math.max(48,Math.min(70,m*.15));
   const home=side=>({x:side<0?30+R:w-30-R, y:h-36-R});
   const r=Math.max(38,Math.min(54,m*.12)), r2=Math.round(r*.66), hr=home(1);
-  const fire={x:hr.x-14, y:hr.y-R-r-20, r};
+  // FIRE hugs the look stick (up and to the left of its resting spot), so the right thumb barely moves
+  const d=(R+r+10)*.7071, fire={x:hr.x-d, y:hr.y-d, r};
   const portrait=isPortrait();
-  const reload={x:fire.x-r-r2-16, y:fire.y+r*.35, r:r2};
-  // portrait has room to stack; landscape keeps them in one row so the top HUD panels stay clear
-  const plant=portrait?{x:reload.x, y:reload.y-2*r2-14, r:r2}:{x:reload.x-2*r2-14, y:reload.y, r:r2};
-  const duck=portrait?{x:reload.x-2*r2-14, y:(reload.y+plant.y)/2, r:r2}:{x:plant.x-2*r2-14, y:reload.y, r:r2};
+  // landscape: one row to the left of FIRE; portrait: one row across the deck, above both sticks
+  const gap=2*r2+14, rowY=portrait?fire.y-r-r2-14:fire.y+r*.35;
+  const reload={x:portrait?w/2+gap:fire.x-r-r2-16, y:rowY, r:r2};
+  const plant={x:reload.x-gap, y:rowY, r:r2};
+  const duck={x:plant.x-gap, y:rowY, r:r2};
   const pause=portrait?{x:w/2, y:Math.round(innerWidth*.75)+36, r:20}:{x:w*.36, y:32, r:20};
   return {w,h,R,home,buttons:{fire,reload,plant,duck,pause}};
 }
@@ -1561,7 +1567,9 @@ if (isTouch) {
     try { touchLayer.setPointerCapture(e.pointerId); } catch {}
     const p=local(e), L=touchLayout(), B=L.buttons;
     if (hit(p,B.pause)) { pauseTouch(); return; }
-    if (hit(p,B.fire)) { fireTouch.id=e.pointerId; touchFire=true; return; }
+    // FIRE also aims: hold it to shoot and slide the same thumb to steer, like a look stick
+    if (hit(p,B.fire)) { fireTouch.id=e.pointerId; touchFire=true;
+      touchLook.id=e.pointerId; touchLook.ox=B.fire.x; touchLook.oy=B.fire.y; touchLook.x=touchLook.y=0; return; }
     if (hit(p,B.reload)) { reloadRifle(); return; }
     if (hit(p,B.plant)) { breach(); return; }
     if (hit(p,B.duck)) { touchCrouch=!touchCrouch; return; }
@@ -1617,9 +1625,11 @@ function drawTouch() {
     label(name,x+kx*R,y+ky*R,Math.round(R*.2),"#0b1414");
   };
   stick(touchJoy,0,0,-1,"MOVE");
-  stick(touchLook,0,0,1,"LOOK");
+  const fireAim=touchLook.id!==null && touchLook.id===fireTouch.id;
+  if (fireAim) { const h=L.home(1); disc(h.x,h.y,R,"#0b1414",.3,"#a9d9bd"); disc(h.x,h.y,R*.42,"#8fd0ff",.7); label("LOOK",h.x,h.y,Math.round(R*.2),"#0b1414"); }
+  else stick(touchLook,0,0,1,"LOOK");
   const btn=(b,t,active,accent)=>{ disc(b.x,b.y,b.r,active?accent:"#0b1414",active?.75:.5,accent); label(t,b.x,b.y,Math.round(b.r*(t.length>4?.32:.4)),active?"#0b1414":"#e5e8d9"); };
-  btn(B.fire,"FIRE",touchFire,"#f2b76b");
+  btn(fireAim?{...B.fire,x:B.fire.x+touchLook.x*R*.5,y:B.fire.y+touchLook.y*R*.5}:B.fire,"FIRE",touchFire,"#f2b76b");
   btn(B.reload,"RELOAD",!!reload,"#a9d9bd");
   btn(B.plant,"PLANT",false,"#a9d9bd");
   btn(B.duck,"DUCK",touchCrouch,"#a9d9bd");

@@ -23,13 +23,14 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 |---|---|
 | WASD: move | Left thumb anywhere on the left half: MOVE stick |
 | Mouse: aim | Right thumb anywhere on the right half: LOOK stick (hold to keep turning) |
-| Click: fire | FIRE (hold) |
+| Click: fire | FIRE (hold to shoot; slide your thumb to aim while firing) |
 | Q: plant charge | PLANT |
 | R: reload | RELOAD |
 | C: crouch | DUCK |
 | Esc: pause | II |
 
 ## Version history
+- **v8:** FIRE moved right next to the look stick and now aims too (hold and slide); fixed the global leaderboard showing "offline" when the score host adds extra text to its reply.
 - **v7:** new touch controls in the style of QUACK: twin floating sticks (move on the left, look on the right) that appear under your thumbs, FIRE above the look stick, and no stuck controls when a finger slips off.
 - **v6:** playable in portrait on phones (game view on top, control deck below); landscape adapts on rotation; clearer RELOAD button; steadier touch aiming.
 - **v5:** clearer objective arrow on the compass (proper head and shaft instead of a small triangle).
