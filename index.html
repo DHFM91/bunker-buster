@@ -76,6 +76,8 @@ article.scored h1{font-size:clamp(24px,4.6vw,60px)}
 article.scored p{margin:.3em 0 .8em}
 .scorewrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 2.2em;align-items:start}
 @media(max-width:700px),(max-height:520px){.scorewrap{gap:0 1em}#board li{padding:.06em .3em}#results td{padding:.16em .3em}}
+#endrun{background:#0b1414;color:var(--amber);border-color:var(--amber);margin-left:.6em}
+#endrun[hidden]{display:none}
 #version{margin-top:1em;font:700 10px monospace;letter-spacing:.18em;color:#93a59799;text-align:right}
 article.scored .controls{display:none!important}
 @media(max-height:520px){
@@ -106,7 +108,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js?v=11"></script>
+<script defer src="bunker-buster.js?v=12"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">
@@ -114,10 +116,10 @@ article.scored .controls{display:none!important}
   <canvas id="viewmodel" width="1280" height="720" aria-hidden="true"></canvas>
   <div id="hud">
     <div class="row">
-      <div class="panel"><span class="label">MISSION / 06</span><span id="objective"></span></div>
+      <div class="panel"><span class="label" id="level-label">LEVEL 1</span><span id="objective"></span></div>
       <div class="panel center"><span id="bearing"></span><span id="signal"></span>
         <div id="alertbar" hidden><b></b><span></span><i></i></div></div>
-      <div class="panel right"><span class="label">LOCATION</span>RELAY STATION</div>
+      <div class="panel right"><span class="label">LOCATION</span><span id="location">RELAY STATION</span></div>
     </div>
     <div id="reticle" aria-hidden="true"></div>
     <div id="prompt" hidden><kbd>Q</kbd> PLANT CHARGE</div>
@@ -131,9 +133,9 @@ article.scored .controls{display:none!important}
   <section id="overlay">
     <article>
       <div id="device-note" role="alert">⚠ Plays MUCH better on desktop than mobile.</div>
-      <div class="eyebrow">FIELD OPERATIONS / RELAY STATION</div>
+      <div class="eyebrow" id="op-line">LEVEL 1 / RELAY STATION</div>
       <h1 id="title">BUNKER BUSTER</h1>
-      <p id="brief">Recover the orange intel case and return to the green extraction pad. Stay unseen: crouch to move silently, and remember gunfire and blasts draw guards. If you are spotted, reinforcements arrive. Cracked concrete can be shot or blown apart to cut your own route.</p>
+      <p id="brief">Recover the orange intel case and return to the green extraction pad. Stay unseen: crouch to move silently, and remember gunfire and blasts draw guards. If a guard spots you, kill him within a second or he raises the alarm and reinforcements arrive. Concrete can be shot or blown apart to cut your own route; red fuel drums explode. Each extraction takes you to a new base, as far as you can go.</p>
       <div class="scorewrap">
       <div id="results" hidden></div>
       <div>
@@ -144,15 +146,15 @@ article.scored .controls{display:none!important}
       <div id="board" hidden></div>
       </div>
       </div>
-      <button id="deploy">DEPLOY</button>
+      <button id="deploy">DEPLOY</button> <button id="endrun" hidden>END RUN &amp; POST SCORE</button>
       <div id="version"></div>
       <div class="controls" aria-label="Controls">
         <span><kbd>WASD</kbd> Move</span><span><kbd>Mouse</kbd> Aim</span><span><kbd>Click</kbd> Fire</span>
-        <span><kbd>Q</kbd> Plant</span><span><kbd>R</kbd> Reload</span><span><kbd>C</kbd> Crouch</span><span><kbd>Esc</kbd> Pause</span>
+        <span><kbd>Q</kbd> Plant</span><span><kbd>G</kbd> Grenade</span><span><kbd>R</kbd> Reload</span><span><kbd>C</kbd> Crouch</span><span><kbd>Esc</kbd> Pause</span>
       </div>
       <div class="controls" id="touch-help" hidden aria-label="Touch controls">
         <span><kbd>Left thumb</kbd> Move</span><span><kbd>Right thumb</kbd> Look</span><span><kbd>FIRE</kbd> hold to shoot, slide to aim</span>
-        <span><kbd>PLANT</kbd> Charge</span><span><kbd>RELOAD</kbd> Reload</span><span><kbd>DUCK</kbd> Crouch</span>
+        <span><kbd>PLANT</kbd> Charge</span><span><kbd>NADE</kbd> Grenade</span><span><kbd>RELOAD</kbd> Reload</span><span><kbd>DUCK</kbd> Crouch</span>
       </div>
     </article>
   </section>

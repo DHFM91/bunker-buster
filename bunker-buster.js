@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v11";
+const VERSION = "v12";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -42,7 +42,7 @@ const firstCell=midCol, lastCell=(rows-1)*columns+midCol;
 const world = new Uint8Array(X * Y * Z);
 let colors = [[0,0,0], [96,98,94], [150,148,142], [96,72,58],
   [43,160,106], [229,143,47], [86,94,62], [124,121,116],
-  [150,132,96], [86,98,60], [104,110,116], [62,58,54], [58,60,60], [92,98,66], [34,36,38]];
+  [150,132,96], [86,98,60], [104,110,116], [62,58,54], [58,60,60], [92,98,66], [34,36,38], [158,34,26]];
 // Per-deploy look: a time of day and weather (sky, sun, ambient light, lamp colour) plus the paint on the
 // base. Kept within believable ranges so it reads as a real place. Intel (orange) and extraction pad (green)
 // never change so objectives always read the same.
@@ -64,19 +64,21 @@ const MOODS={
 };
 function rollPalette(random=Math.random) {
   const r=(a,b)=>a+random()*(b-a), pick=a=>a[Math.floor(random()*a.length)];
-  const hue=r(0,360);
-  const concrete=hsl(hue,r(.03,.1),r(.52,.62));
-  const floor=hsl(hue+r(-25,25),r(.03,.08),r(.38,.46));
+  const T=(typeof theme!=="undefined" && theme.paint) || {};
+  const hue=T.hue?r(...T.hue):r(0,360);
+  const concrete=hsl(hue,T.sat?r(...T.sat):r(.03,.1),T.light?r(...T.light):r(.52,.62));
+  const floor=T.floor?hsl(...T.floor.map((v,i)=>i?v*r(.95,1.05):v+r(-8,8))):hsl(hue+r(-25,25),r(.03,.08),r(.38,.46));
   const [oh,os,ol]=pick([[22,.42,.32],[28,.3,.3],[80,.16,.3],[205,.12,.34],[0,0,.3]]);
   const outer=hsl(oh+r(-6,6),os,ol);
   const reinforcedCol=hsl(hue+r(160,200),r(.03,.08),r(.42,.5));
-  const yard=hsl(hue,r(.02,.05),r(.24,.3));
+  const yard=T.yard?hsl(...T.yard.map((v,i)=>i?v*r(.95,1.05):v+r(-8,8))):hsl(hue,r(.02,.05),r(.24,.3));
   const [th,ts,tl]=pick([[75,.25,.3],[40,.3,.42],[200,.1,.36],[110,.2,.26]]);
   const truck=hsl(th+r(-5,5),ts,tl);
   const drum=pick([[80,.3,.3],[210,.35,.32],[0,.45,.34],[45,.55,.4]]);
   // hazard paint: mostly yellow, sometimes red/white or blue; never the intel's orange or the pad's green
-  const accentHue=pick([52,50,46,0,210,280])+r(-4,4);
-  const mood=MOODS[pick(["dusk","day","day","overcast","overcast","smog","night"])];
+  const accentHue=(T.accent??pick([52,50,46,0,210,280]))+r(-4,4);
+  const moods=(typeof theme!=="undefined" && theme.moods) || ["dusk","day","day","overcast","overcast","smog","night"];
+  const mood=MOODS[pick(moods)];
   const sky=(h,s,l)=>hsl(h+r(-12,12),s*r(.8,1.2),l*r(.92,1.06));
   const skyLo=sky(...mood.lo), skyHi=sky(...mood.hi);
   const el=r(...mood.el)*Math.PI/180, az=r(0,Math.PI*2);
@@ -90,7 +92,7 @@ function rollPalette(random=Math.random) {
     fog:[0,1,2].map(c=>skyLo[c]*.62+skyHi[c]*.18),
   };
   colors=[[0,0,0], floor, concrete, outer, [43,160,106], [229,143,47], [86,94,62],
-    concrete.map(c=>c*.86), [150,132,96], hsl(...drum), reinforcedCol, [62,58,54], yard, truck, [32,34,36]];
+    concrete.map(c=>c*.86), [150,132,96], hsl(...drum), reinforcedCol, [62,58,54], yard, truck, [32,34,36], [158,34,26]];
   for (let c=0;c<3;c++) {
     groundFog[c]=palette.fog[c];
     dustColor[c]=concrete[c]*.95; rubbleColor[c]=Math.min(255,concrete[c]*1.1);
@@ -170,16 +172,21 @@ function generateMaze(random) {
 }
 const MIN_REACH=21;          // fewest room-steps from the foyer to the intel once merges and vents are added
 const pairKey=(a,b)=>a<b?a*1000+b:b*1000+a;
-function planLayout(random) {
+// opts (all optional, set by the level's theme): yards (fixed courtyard count), reinforced (chance a solid
+// wall is reinforced), windows (chance a solid wall gets a window), vents (max crawl vents), gates (chance a
+// loop passage is barred), fuel (chance a drum pair is explosive).
+const PLAN_DEFAULTS={yards:0, reinforced:.22, windows:.14, vents:3, gates:.5, fuel:.35};
+function planLayout(random,opts={}) {
+  const o={...PLAN_DEFAULTS,...opts};
   let best=null;
   for (let attempt=0; attempt<20; attempt++) {
-    const plan=planOnce(random);
+    const plan=planOnce(random,o);
     if (plan.reach>=MIN_REACH) return plan;
     if (!best || plan.reach>best.reach) best=plan;
   }
   return best;
 }
-function planOnce(random) {
+function planOnce(random,o) {
   const cellOf=(c,r)=>r*columns+c;
   const passages=generateMaze(random);
   const treeCount=passages.length;
@@ -211,7 +218,7 @@ function planOnce(random) {
   // Central atrium with reinforced pillars.
   if (random()<.6 && free(midCol-1,4,3,2)) claim(midCol-1,4,3,2,"atrium");
   // Courtyards: open yards with vehicles and low cover.
-  const yardCount=1+(random()<.5?1:0);
+  const yardCount=o.yards || 1+(random()<.5?1:0);
   for (let y=0;y<yardCount;y++) {
     for (let t=0;t<12;t++) {
       const [w,h]=[[2,2],[3,2],[2,3]][Math.floor(random()*3)];
@@ -236,19 +243,22 @@ function planOnce(random) {
   }
   // Barred gates on loop passages (never on the maze's own spanning tree, so guards can always walk round).
   const barred=[];
-  for (const [a,b] of extras) if (!sameSpace(a,b) && owner[a]<0 && owner[b]<0 && random()<.5) barred.push([a,b]);
+  for (const [a,b] of extras) if (!sameSpace(a,b) && owner[a]<0 && owner[b]<0 && random()<o.gates) barred.push([a,b]);
   // Crawl vents: knee-high gaps through a solid wall. Crouch to fit; guards can't follow.
   const vents=[], ventKeys=new Set();
-  for (let t=0;t<40 && vents.length<3;t++) {
+  for (let t=0;t<40 && vents.length<o.vents;t++) {
     const [a,b]=pairs[Math.floor(random()*pairs.length)];
     if (open(a,b) || ventKeys.has(pairKey(a,b)) || owner[a]===0 || owner[b]===0) continue;
     vents.push([a,b]); ventKeys.add(pairKey(a,b));
   }
   // Reinforced walls: take two charges and stop bullets. The intel room is a vault.
-  const reinforced=[];
+  // Windows: a slot at head height through a solid wall (some barred), so you and the guards can see across.
+  const reinforced=[], windows=[];
   for (const [a,b] of pairs) {
     if (open(a,b) || ventKeys.has(pairKey(a,b))) continue;
-    if (a===lastCell || b===lastCell || random()<.22) reinforced.push([a,b]);
+    const r=random(), w=random(), bars=random()<.5;
+    if (a===lastCell || b===lastCell || r<o.reinforced) reinforced.push([a,b]);
+    if (w<o.windows && owner[a]!==0 && owner[b]!==0) windows.push([a,b,bars]);
   }
   // Guard posts: a sandbag nest with a sentry. One always watches the way in from just past the foyer.
   const posts=[{cell:cellOf(midCol,2),facing:0}];
@@ -260,12 +270,12 @@ function planOnce(random) {
   // Room dressing: wall lamps and clutter in corners. Sides: 0 +z, 1 +x, 2 -z, 3 -x. Corners 0..3.
   const props=[];
   for (let cell=0;cell<columns*rows;cell++) {
-    const lamp=random(), side=Math.floor(random()*4), clutter=random(), corner=Math.floor(random()*4);
+    const lamp=random(), side=Math.floor(random()*4), clutter=random(), corner=Math.floor(random()*4), fuel=random();
     if (owner[cell]===0 || posts.some(p=>p.cell===cell)) continue;
     if (lamp<.45) props.push({type:"lamp",cell,side});
     if (cell===lastCell) continue;
     if (clutter<.3) props.push({type:"crates",cell,corner});
-    else if (clutter<.5) props.push({type:"barrels",cell,corner});
+    else if (clutter<.5) props.push({type:"barrels",cell,corner,fuel:fuel<o.fuel});
     else if (clutter<.6) props.push({type:"sandbags",cell,side});
   }
   // Yards: one parked truck and some low cover each.
@@ -286,7 +296,7 @@ function planOnce(random) {
       dist[b]=dist[a]+1; queue.push(b);
     }
   }
-  return {passages,spaces,owner,barred,vents,reinforced,posts,props,reach:dist[lastCell]};
+  return {passages,spaces,owner,barred,vents,reinforced,windows,posts,props,reach:dist[lastCell]};
 }
 // ===== END MAP PLAN =====
 
@@ -352,7 +362,7 @@ function reset(random=Math.random) {
     const {x,z}=cellCenter(cell);
     box(x-room/2,1,z-room/2,x+room/2,wallTop,z+room/2,0);
   }
-  plan=planLayout(random);
+  plan=planLayout(random,theme.plan);
   for (const [from,to] of plan.passages) {
     const a=cellCenter(from), b=cellCenter(to);
     box(Math.min(a.x,b.x)-room/2,1,Math.min(a.z,b.z)-room/2,
@@ -378,6 +388,12 @@ function reset(random=Math.random) {
     const s=slab(a,b);
     if (s.axis==="x") { box(s.x0+1,1,s.z0,s.x0+2,5,s.z1,11); box(s.x0+1,5,s.z0,s.x0+2,wallTop,s.z1,2); }
     else { box(s.x0,1,s.z0+1,s.x1,5,s.z0+2,11); box(s.x0,5,s.z0+1,s.x1,wallTop,s.z0+2,2); }
+  }
+  for (const [a,b,bars] of plan.windows) {
+    // a slot from head height up, two cells tall, three wide; bars down the middle of some
+    const s=slab(a,b);
+    if (s.axis==="x") { box(s.x0,3,s.z0+1,s.x1,5,s.z1-1,0); if (bars) box(s.x0+1,3,s.z0+1,s.x0+2,5,s.z1-1,11); }
+    else { box(s.x0+1,3,s.z0,s.x1-1,5,s.z1,0); if (bars) box(s.x0+1,3,s.z0+1,s.x1-1,5,s.z0+2,11); }
   }
   for (const [a,b] of plan.vents) {
     const s=slab(a,b);
@@ -426,7 +442,7 @@ function reset(random=Math.random) {
     }
     const x=p.corner&1?b.x1-1:b.x0, z=p.corner&2?b.z1-1:b.z0, inx=p.corner&1?-1:1;
     if (p.type==="crates") { put(x,1,z,(h3(x,z,1)&1)?3:2,6); put(x+inx,1,z,2,6); }
-    else { put(x,1,z,3,9); put(x+inx,1,z,3,9); }
+    else { const m=p.fuel?15:9; put(x,1,z,3,m); put(x+inx,1,z,3,m); }
   }
   // Guard posts: a horseshoe of sandbags open toward where the sentry looks.
   const sentries=[];
@@ -444,7 +460,8 @@ function reset(random=Math.random) {
   // Starting garrison: sentries at their posts, the rest spread through the base, never near the foyer.
   const taken=new Set(sentries.map(s=>s.cell));
   guards=sentries.map(s=>{ const g=makeGuard(s.x,s.z,s.cell,s.yaw); g.post={x:s.x,z:s.z,yaw:s.yaw}; g.task="post"; return g; });
-  for (let tries=0; guards.length<GARRISON+sentries.length-1 && tries<400; tries++) {
+  const garrison=GARRISON+sentries.length-1+rule("garrison",0)+levelGarrison();
+  for (let tries=0; guards.length<garrison && tries<400; tries++) {
     const cell=Math.floor(random()*columns*rows);
     const col=cell%columns, row=Math.floor(cell/columns);
     if (taken.has(cell) || row<3 && Math.abs(col-midCol)<3) continue;
@@ -455,11 +472,15 @@ function reset(random=Math.random) {
     guards.push(makeGuard(x,z,cell,random()*6.28));
   }
   alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; report=null; chaseField=null; chaseTimer=0; stepTimer=0;
-  charges=10; reserve=144; magazine=24; reload=0; cooldown=0;
+  charges=rule("charges",10); reserve=144; magazine=24; reload=0; cooldown=0;
   flash=0; hurt=0; phase="ready"; hasIntel=false;
   notice=""; noticeTime=0; particles=[]; bullets=[];
   fallers=[]; pending.clear(); integrityTimer=0; shake=0; noise=null; charge=null; blast=null; stridePhase=0; sway=0;
   decals.length=0; decalCount.fill(0); scorches.length=0;
+  grenades=[]; grenadeCount=GRENADES; pendingBlasts=[]; throwCool=0;
+  if (rule("caution",false)) { alertLevel=CAUTION; alertTimer=60; }
+  document.querySelector("#location").textContent=theme.name;
+  document.querySelector("#level-label").textContent="LEVEL "+campaign.level;
   markDirty(0,0,0); markDirty(X-1,Y-1,Z-1);
 }
 
@@ -493,7 +514,7 @@ function trace(x,y,z,dx,dy,dz,limit,out) {
 // stacked sandbags, oil drums and steel bars. Collision still uses the whole cell; only what you see
 // (and what bullets and eyes hit) is the shape.
 function h3(a,b,c) { return (Math.imul(a,73856093)^Math.imul(b,19349663)^Math.imul(c,83492791))>>>0; }
-const SHAPE=[0,0,0,0,0,0,0,4,8,8,0,4];
+const SHAPE=[0,0,0,0,0,0,0,4,8,8,0,4,0,0,0,8];
 function rubbleOcc(ix,iy,iz,sx,sy,sz) {
   const h=h3(ix*4+sx,iy*4+sy,iz*4+sz);
   const above=tile(ix,iy+1,iz);
@@ -518,7 +539,7 @@ function sandbagOcc(ix,iy,iz,sx,sy,sz) {
 function drumOcc(ix,iy,iz,sx,sy,sz) {
   const r=(sx-3.5)**2+(sz-3.5)**2;
   if (r>14.5) return false;
-  const ly=iy*8+sy, top=tile(ix,iy+1,iz)!==9;
+  const top=tile(ix,iy+1,iz)!==tile(ix,iy,iz);
   return !(top && sy===7 && r<8);                         // recessed lid inside the rim
 }
 function barsOcc(ix,iy,iz,sx,sy,sz) {
@@ -529,7 +550,7 @@ function barsOcc(ix,iy,iz,sx,sy,sz) {
   return along===1 || along===3 || ly===6 || ly===15;     // two bars per cell, two cross rails
 }
 function shapeOcc(m,ix,iy,iz,sx,sy,sz) {
-  return m===7?rubbleOcc(ix,iy,iz,sx,sy,sz):m===8?sandbagOcc(ix,iy,iz,sx,sy,sz):m===9?drumOcc(ix,iy,iz,sx,sy,sz):barsOcc(ix,iy,iz,sx,sy,sz);
+  return m===7?rubbleOcc(ix,iy,iz,sx,sy,sz):m===8?sandbagOcc(ix,iy,iz,sx,sy,sz):m===11?barsOcc(ix,iy,iz,sx,sy,sz):drumOcc(ix,iy,iz,sx,sy,sz);
 }
 function shapeTint(m,ix,iy,iz,cx,cy,cz) {
   if (m===7) return .68+(h3(ix*4+cx,iy*4+cy,iz*4+cz)>>>4&15)/15*.5;       // each chunk its own shade
@@ -539,7 +560,7 @@ function shapeTint(m,ix,iy,iz,cx,cy,cz) {
     // each bag its own shade, bellied out in the middle, tucked in at the seams, darker underneath
     return (.8+(h3(Math.floor(p/6),ly>>2,runX?iz:ix)&15)/15*.28)*[.72,.92,1.06,1.12][ly&3]*(end===0?.78:end===1?.95:1.05);
   }
-  if (m===9) return .78+(h3(ix,0,iz)&15)/15*.4;
+  if (m===9 || m===15) return .82+(h3(ix,0,iz)&15)/15*.3;
   return 1;
 }
 function shapeTrace(m,ix,iy,iz,x,y,z,dx,dy,dz,t,side,out) {
@@ -635,6 +656,9 @@ function shoot() {
         vy:Math.random()*3,vz:(Math.random()-.5)*3-dz*2,life:.18+Math.random()*.24,shade:Math.random()});
     }
     impactFx(x,y,z,dx,dy,dz,3,true);
+  } else if (material===15) {
+    detonateDrum(hit.x,hit.z,.04);
+    impactFx(player.x+dx*hit.t,player.eye+dy*hit.t,player.z+dz*hit.t,dx,dy,dz,6,false);
   } else if (material) {
     // steel, reinforced concrete, crates, drums, sandbags: the round stops and leaves a mark
     const x=player.x+dx*hit.t, y=player.eye+dy*hit.t, z=player.z+dz*hit.t;
@@ -708,33 +732,45 @@ function updateCharge(dt) {
   }
   const {x,y,z,dx,dz}=charge;
   charge=null;
-  const cx=x+dx*1.7, cy=y-.4, cz=z+dz*1.7;
-  const before=countMaterial(10,cx,cy,cz,3.7);
-  const removed=carve(cx,cy,cz,3.7,(x,y,z)=>{
-    if (Math.random()<.28) particles.push({x,y,z,vx:(Math.random()-.5)*7,
-      vy:Math.random()*5,vz:(Math.random()-.5)*7,life:.45+Math.random()*.5,shade:Math.random()});
-  });
+  explode({x,y,z,dx,dz,cx:x+dx*1.7,cy:y-.4,cz:z+dz*1.7,carve:3.7,reach:8,damage:110,guardR:6,
+    cause:"The breach charge got you. Back off after planting."});
+}
+// One explosion, whatever set it off: breach charge, grenade or fuel drum.
+// (x,y,z) is where the flash and debris come from; (cx,cy,cz) is the centre of damage.
+// carve: radius of wall it blows out (0 for none). reach/damage: hurts the player inside reach,
+// halved through a wall. guardR: soldiers inside it go down (inner two-thirds) or are wounded.
+let pendingBlasts=[];
+function explode(e) {
+  const {x,y,z,cx,cy,cz}=e, dx=e.dx||0, dz=e.dz||0;
+  // fuel drums inside the blast go up a moment later
+  armDrums(cx,cy,cz,Math.max(e.carve,e.guardR*.6));
+  let removed=0, before=0;
+  if (e.carve) {
+    before=countMaterial(10,cx,cy,cz,e.carve);
+    removed=carve(cx,cy,cz,e.carve,(x,y,z)=>{
+      if (Math.random()<.28) particles.push({x,y,z,vx:(Math.random()-.5)*7,
+        vy:Math.random()*5,vz:(Math.random()-.5)*7,life:.45+Math.random()*.5,shade:Math.random()});
+    });
+  }
   blast={x,y,z,life:.42};
-  shake=.55;
-  // blast damage falls off over 8 voxels; a wall in between halves it
-  const bx=cx, by=cy, bz=cz;
-  const pd=Math.hypot(player.x-bx,(player.eye-1.4)-by,player.z-bz);
-  if (pd<8) {
-    let dmg=Math.round(110*(1-pd/8));
-    const ddx=player.x-bx, ddy=(player.eye-1.4)-by, ddz=player.z-bz;
-    if (trace(bx,by,bz,ddx/pd,ddy/pd,ddz/pd,pd-.3,hit)) dmg=Math.round(dmg*.5);
+  shake=Math.max(shake,e.carve?.55:.4*Math.max(0,1-Math.hypot(player.x-cx,player.z-cz)/30));
+  const pd=Math.hypot(player.x-cx,(player.eye-1.4)-cy,player.z-cz);
+  if (pd<e.reach) {
+    let dmg=Math.round(e.damage*(1-pd/e.reach));
+    const ddx=player.x-cx, ddy=(player.eye-1.4)-cy, ddz=player.z-cz;
+    if (trace(cx,cy,cz,ddx/pd,ddy/pd,ddz/pd,pd-.3,hit)) dmg=Math.round(dmg*.5);
     if (dmg>0) {
       player.hp=Math.max(0,player.hp-dmg); hurt=.6;
       say("CAUGHT IN THE BLAST  -"+dmg);
-      if (!player.hp) { finish(false,"The breach charge got you. Back off after planting."); return; }
+      if (!player.hp) { finish(false,e.cause); return; }
     }
   }
   for (const g of guards) {
     if (!g.hp) continue;
-    const gd=Math.hypot(g.x-bx,2.5-by,g.z-bz);
-    if (gd<6) { g.hp=Math.max(0,g.hp-(gd<4?2:1)); g.impact=.25; }
+    const gd=Math.hypot(g.x-cx,2.5-cy,g.z-cz);
+    if (gd<e.guardR) { g.hp=Math.max(0,g.hp-(gd<e.guardR*.67?2:1)); g.impact=.25; }
   }
-  makeNoise(bx,bz,NOISE.blast,"blast");
+  makeNoise(cx,cz,NOISE.blast,"blast");
   for (let n=0; n<22; n++) {
     particles.push({x:x-dx*.35,y,z:z-dz*.35,vx:(Math.random()-.5)*3-dx*1.6,
       vy:Math.random()*1.8,vz:(Math.random()-.5)*3-dz*1.6,life:.95+Math.random()*.65,dust:true});
@@ -747,13 +783,136 @@ function updateCharge(dt) {
   }
   for (let n=0; n<16; n++) particles.push({x:x-dx*.3,y,z:z-dz*.3,vx:(Math.random()-.5)*9-dx*3,vy:Math.random()*6,
     vz:(Math.random()-.5)*9-dz*3,life:.2+Math.random()*.35,shade:Math.random(),spark:true});
-  scorches.push({x:cx-dx*1.2,y:cy,z:cz-dz*1.2,r:3.4});
+  scorches.push({x:cx-dx*1.2,y:cy,z:cz-dz*1.2,r:e.carve?3.4:2.4});
   if (scorches.length>12) scorches.shift();
-
-  tone(95,.45,.25,"sawtooth",24);
-  const cracked=before-countMaterial(10,cx,cy,cz,3.7);
-  say(cracked && !removed?"REINFORCED WALL CRACKED · ONE MORE CHARGE":removed+" CONCRETE CELLS CLEARED");
+  const near=Math.max(.25,1-Math.hypot(player.x-cx,player.z-cz)/40);
+  tone(95,.45,.25*near,"sawtooth",24);
+  if (e.carve===3.7) {
+    const cracked=before-countMaterial(10,cx,cy,cz,e.carve);
+    say(cracked && !removed?"REINFORCED WALL CRACKED · ONE MORE CHARGE":removed+" CONCRETE CELLS CLEARED");
+  }
 }
+// Fuel drums (material 15) caught in a blast or shot go off themselves, a beat later, and can chain.
+function armDrums(cx,cy,cz,r) {
+  for (let z=Math.floor(cz-r);z<=cz+r;z++) for (let x=Math.floor(cx-r);x<=cx+r;x++) {
+    if (tile(x,1,z)!==15 || (x+.5-cx)**2+(z+.5-cz)**2>r*r) continue;
+    detonateDrum(x,z,.12+Math.random()*.18);
+  }
+}
+function detonateDrum(x,z,delay=0) {
+  if (pendingBlasts.some(b=>b.x===x && b.z===z)) return;
+  pendingBlasts.push({x,z,t:delay});
+}
+function updateBlasts(dt) {
+  for (const b of pendingBlasts) b.t-=dt;
+  const due=pendingBlasts.filter(b=>b.t<=0);
+  pendingBlasts=pendingBlasts.filter(b=>b.t>0);
+  for (const b of due) {
+    if (tile(b.x,1,b.z)!==15) continue;
+    for (let y=1;y<Y && tile(b.x,y,b.z)===15;y++) { world[index(b.x,y,b.z)]=0; markDirty(b.x,y,b.z); }
+    integrityTimer=integrityTimer||.05;
+    run.drums=(run.drums||0)+1;
+    explode({x:b.x+.5,y:2,z:b.z+.5,cx:b.x+.5,cy:2,cz:b.z+.5,carve:2.2,reach:7.5,damage:95,guardR:5.5,
+      cause:"Too close to a fuel drum when it went up."});
+    if (phase!=="playing") return;
+  }
+}
+
+// ===== Grenades: lobbed in a low arc, bounce, and go off after a short fuse =====
+const GRENADES=3, GRENADE_FUSE=2.2, GRENADE_GRAVITY=16;
+let grenades=[], grenadeCount=GRENADES, throwCool=0;
+function throwGrenade() {
+  if (phase!=="playing" || throwCool>0) return;
+  if (!grenadeCount) { say("NO GRENADES LEFT"); return; }
+  grenadeCount--; throwCool=.7;
+  const [dx,dy,dz]=direction();
+  // a soft underhand lob: modest speed plus a little lift, so it carries about a room or two
+  const sx=player.x+dx*.5, sz=player.z+dz*.5, sy=player.eye-.35;
+  grenades.push({x:canStand(sx,sz,player.eye)?sx:player.x,y:sy,z:canStand(sx,sz,player.eye)?sz:player.z,
+    vx:dx*12.5,vy:dy*12.5+4,vz:dz*12.5,fuse:GRENADE_FUSE,spin:0});
+  tone(260,.08,.05,"triangle",180);
+  say("GRENADE OUT");
+}
+function updateGrenades(dt) {
+  throwCool=Math.max(0,throwCool-dt);
+  for (const g of grenades) {
+    g.fuse-=dt; g.spin+=dt*12;
+    const steps=4, h=dt/steps;
+    for (let k=0;k<steps;k++) {
+      g.vy-=GRENADE_GRAVITY*h;
+      // move one axis at a time and bounce off whatever face it hits, losing energy
+      const nx=g.x+g.vx*h;
+      if (tile(Math.floor(nx),Math.floor(g.y),Math.floor(g.z))) { g.vx*=-.45; g.vz*=.8; clink(g); } else g.x=nx;
+      const nz=g.z+g.vz*h;
+      if (tile(Math.floor(g.x),Math.floor(g.y),Math.floor(nz))) { g.vz*=-.45; g.vx*=.8; clink(g); } else g.z=nz;
+      const ny=g.y+g.vy*h;
+      if (tile(Math.floor(g.x),Math.floor(ny),Math.floor(g.z))) {
+        if (g.vy<0) { g.vx*=.62; g.vz*=.62; }
+        g.vy=Math.abs(g.vy)>1.5?-g.vy*.38:0; clink(g);
+      } else g.y=ny;
+    }
+    if (g.fuse<=0) {
+      g.dead=true;
+      explode({x:g.x,y:g.y+.3,z:g.z,cx:g.x,cy:g.y+.3,cz:g.z,carve:0,reach:6.5,damage:85,guardR:4.6,
+        cause:"Your own grenade got you. Throw it further."});
+      if (phase!=="playing") return;
+    }
+  }
+  grenades=grenades.filter(g=>!g.dead);
+}
+function clink(g) {
+  const speed=Math.hypot(g.vx,g.vy,g.vz);
+  if (speed<1.2 || g.lastClink>0) return;
+  g.lastClink=.12;
+  const v=Math.max(.01,.05*Math.max(0,1-Math.hypot(player.x-g.x,player.z-g.z)/30));
+  tone(1400+Math.random()*300,.04,v,"square",900);
+  setTimeout(()=>g.lastClink=0,120);
+}
+
+// ===== Campaign: an endless run of fresh procedural bases, one after another =====
+// Every extraction moves you to a new base with its own theme: look, weather and a twist on the rules.
+// Bases also get a little tougher each level (more soldiers, sharper eyes).
+// paint: concrete hue/sat/light ranges and floor/yard [h,s,l]. plan: options for planLayout.
+// rules: sight/hear multiply guard senses, garrison adds soldiers, charges sets the breach kit,
+// caution starts the base on CAUTION, moss grows on the walls.
+const THEMES=[
+  {id:"relay", name:"RELAY STATION", brief:"A standard concrete relay post. Find the intel, get it back to the pad.",
+    moods:["day","overcast","dusk"], plan:{}, rules:{}},
+  {id:"arctic", name:"ARCTIC OUTPOST", brief:"Snow on every floor. Your footsteps crunch, so guards hear you from further off. Crouch more.",
+    moods:["overcast","day","night"], paint:{hue:[195,220],sat:[.04,.1],light:[.6,.7],floor:[205,.12,.8],yard:[205,.1,.84],accent:0},
+    plan:{yards:2}, rules:{hear:1.6}},
+  {id:"desert", name:"DESERT DEPOT", brief:"Sun-baked yards and wide windows. Long sight lines work both ways: guards see further here.",
+    moods:["day","smog"], paint:{hue:[28,42],sat:[.14,.24],light:[.56,.66],floor:[36,.22,.5],yard:[38,.3,.58]},
+    plan:{yards:2, windows:.3}, rules:{sight:1.15}},
+  {id:"night", name:"NIGHT RAID", brief:"Lights out. Guards can't see as far in the dark, but there are more of them on shift.",
+    moods:["night"], plan:{windows:.2}, rules:{sight:.72, garrison:3}},
+  {id:"vault", name:"DEEP VAULT", brief:"A hardened bunker: reinforced walls everywhere, each needing two charges. You get extra charges.",
+    moods:["overcast","smog","night"], paint:{sat:[.02,.05],light:[.44,.52]}, plan:{reinforced:.5, windows:.06, vents:5}, rules:{charges:14}},
+  {id:"lockdown", name:"LOCKDOWN", brief:"They already know something's up: the base starts on CAUTION and the fuel drums are everywhere.",
+    moods:["dusk","smog","night"], paint:{accent:0}, plan:{fuel:.8}, rules:{caution:true}},
+  {id:"overgrown", name:"OVERGROWN DEPOT", brief:"Abandoned and half reclaimed by moss. Barred gates, windows and crawl vents all over.",
+    moods:["dusk","overcast","day","smog"], paint:{hue:[70,110],sat:[.05,.12]}, plan:{vents:6, gates:.85, windows:.28}, rules:{moss:true}},
+];
+let theme=THEMES[0];
+let campaign={level:1,total:0,time:0,cleared:0};
+function pickTheme() {
+  if (campaign.level===1) return THEMES[0];
+  const pool=THEMES.filter(t=>t!==theme);
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+const rule=(k,d)=>theme.rules[k]??d;
+// difficulty that builds level by level, on top of the theme
+const levelSight=()=>1+Math.min(.2,(campaign.level-1)*.025);
+const levelGarrison=()=>Math.min(6,Math.floor((campaign.level-1)/2));
+function showBriefing() {
+  document.querySelector("#op-line").textContent="LEVEL "+campaign.level+" / "+theme.name;
+  title.textContent=campaign.level===1?"BUNKER BUSTER":theme.name;
+  brief.textContent=campaign.level===1?brief.dataset.intro:theme.brief+(campaign.total?"  Run total so far: "+campaign.total.toLocaleString()+".":"");
+  deploy.textContent="DEPLOY";
+  endRunBtn.hidden=true;
+}
+const endRunBtn=document.querySelector("#endrun");
+brief.dataset.intro=brief.textContent;
 
 // ===== Scoring =====
 // Time is king: a fast extraction is worth far more than anything else.
@@ -782,15 +941,37 @@ function finish(won,why) {
   phase=won?"won":"lost"; keys.clear();
   touchFire=false; touchMove.x=touchMove.y=0; touchLayer.hidden=true;
   overlay.hidden=false;
-  title.textContent=won?"EXTRACTED":"MISSION FAILED";
-  brief.textContent=won?"Intel secured in "+fmtTime(run.time)+".":(why||"You were hit before reaching extraction.");
-  deploy.textContent="REDEPLOY";
+  const r=scoreRun(won);
+  campaign.time+=run.time;
+  if (won) { campaign.total+=r.total; campaign.cleared++; }
+  document.querySelector("#op-line").textContent="LEVEL "+campaign.level+" / "+theme.name;
+  if (won) {
+    title.textContent="LEVEL "+campaign.level+" CLEAR";
+    brief.textContent="Intel secured in "+fmtTime(run.time)+". Push on to a new base, or end the run here and post your total.";
+    deploy.textContent="NEXT LEVEL ›";
+    endRunBtn.hidden=false;
+  } else {
+    title.textContent="MISSION FAILED";
+    brief.textContent=(why||"You were hit before reaching extraction.")+" Run over: "+campaign.cleared+" level"+(campaign.cleared===1?"":"s")+" cleared.";
+    deploy.textContent="NEW RUN";
+    endRunBtn.hidden=true;
+  }
   if (document.pointerLockElement===screen) document.exitPointerLock();
-  showResults(scoreRun(won));
+  showResults(r,!won);
+}
+// Ending a run on your own terms after a win: the run total goes to the board.
+function endRun() {
+  if (phase!=="won") return;
+  phase="ended";
+  title.textContent="RUN COMPLETE";
+  brief.textContent=campaign.cleared+" level"+(campaign.cleared===1?"":"s")+" cleared in "+fmtTime(campaign.time)+".";
+  deploy.textContent="NEW RUN"; endRunBtn.hidden=true;
+  showResults(lastResult,true);
 }
 
 // ===== Global leaderboard (shared JSON bin, same setup as the other games) =====
-// Entries: [initials, score, seconds, won(1/0)]. Ranked by score.
+// Entries: [initials, run total, seconds played, levels cleared]. Ranked by score.
+// (Older single-mission entries stored won as 1/0, which reads the same: 1 level or KIA.)
 const LB_URL = "https://json.extendsclass.com/bin/26db85ce0e56";
 const LB_SIZE = 10;
 let board = [], lbOnline = false, lastResult = null, justAdded = null;
@@ -799,7 +980,7 @@ const resultsEl=document.querySelector("#results"), entryEl=document.querySelect
 function cleanBoard(list) {
   if (!Array.isArray(list)) return [];
   return list.filter(r=>Array.isArray(r) && typeof r[0]==="string" && Number.isFinite(r[1]))
-    .map(r=>[r[0].toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3)||"???",Math.max(0,Math.round(r[1])),+r[2]||0,r[3]?1:0])
+    .map(r=>[r[0].toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3)||"???",Math.max(0,Math.round(r[1])),+r[2]||0,Math.max(0,Math.min(999,Math.round(+r[3]||0)))])
     .sort((a,b)=>b[1]-a[1]).slice(0,LB_SIZE);
 }
 async function lbRequest(opts) {
@@ -825,25 +1006,26 @@ function renderBoard() {
     const r=board[i];
     const mine=r && justAdded && r[0]===justAdded[0] && r[1]===justAdded[1] && r[2]===justAdded[2];
     rows.push(`<li${mine?' class="mine"':""}><span>${String(i+1).padStart(2," ")}.</span><b>${r?r[0]:"---"}</b>`+
-      `<em>${r?(r[3]?fmtTime(r[2]):"KIA"):""}</em><strong>${r?r[1].toLocaleString():""}</strong></li>`);
+      `<em>${r?(r[3]?r[3]+" LVL · "+fmtTime(r[2]):"KIA"):""}</em><strong>${r?r[1].toLocaleString():""}</strong></li>`);
   }
   boardEl.innerHTML=`<div class="eyebrow">GLOBAL TOP ${LB_SIZE}${lbOnline?"":" · offline, showing last known"}</div><ol>${rows.join("")}</ol>`;
   boardEl.hidden=false;
 }
-async function showResults(r) {
+async function showResults(r,final) {
   lastResult=r; justAdded=null;
   const row=(a,b,c,cls="")=>`<tr class="${cls}"><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
   resultsEl.innerHTML=`<table>`+
     r.lines.map(l=>row(l[0],l[1],l[2].toLocaleString())).join("")+
     row("Subtotal","",r.subtotal.toLocaleString(),"sub")+
     row("Damage taken",r.damage+" HP → −"+Math.min(100,r.damage)+"%",(r.penalty?"−":"")+r.penalty.toLocaleString(),r.penalty?"pen":"")+
-    row("FINAL SCORE","",r.total.toLocaleString(),"total")+`</table>`;
+    row("Level "+campaign.level+" score","",r.total.toLocaleString(),"sub")+
+    row("RUN TOTAL",campaign.cleared+" level"+(campaign.cleared===1?"":"s"),campaign.total.toLocaleString(),"total")+`</table>`;
   resultsEl.hidden=false; entryEl.hidden=true; overlay.querySelector("article").classList.add("scored");
   boardEl.hidden=false; boardEl.innerHTML=`<div class="eyebrow">GLOBAL TOP ${LB_SIZE} · loading…</div>`;
   await fetchBoard();
   if (lastResult!==r) return;
   renderBoard();
-  if (qualifies(r.total)) {
+  if (final && qualifies(campaign.total)) {
     entryEl.hidden=false; initialsEl.value=""; 
     if (!touchDevice) initialsEl.focus();
   }
@@ -853,7 +1035,7 @@ async function submitInitials() {
   const name=initialsEl.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3);
   if (!name) { initialsEl.focus(); return; }
   entryEl.hidden=true;
-  const entry=[name,r.total,Math.round(r.time*100)/100,r.won?1:0];
+  const entry=[name,campaign.total,Math.round(campaign.time*100)/100,campaign.cleared];
   await fetchBoard();                       // merge with the freshest list right before writing
   board=cleanBoard(board.concat([entry])); justAdded=entry;
   if (lbOnline) {
@@ -863,6 +1045,7 @@ async function submitInitials() {
   renderBoard();
 }
 document.querySelector("#entry-save").addEventListener("click",submitInitials);
+document.querySelector("#endrun").addEventListener("click",endRun);
 initialsEl.addEventListener("keydown",e=>{ e.stopPropagation(); if (e.key==="Enter") submitInitials(); });
 initialsEl.addEventListener("input",()=>{ initialsEl.value=initialsEl.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3); });
 
@@ -900,6 +1083,11 @@ function update(dt,clock) {
   stridePhase+=travel*2.8;
   sway+=(Math.min(1,travel/(dt*5||1))-sway)*Math.min(1,dt*12);
   updateCharge(dt);
+  if (phase!=="playing") return;
+  updateGrenades(dt);
+  if (phase!=="playing") return;
+  updateBlasts(dt);
+  if (phase!=="playing") return;
   updateAlert(dt,travel,crouched);
   for (const guard of guards) {
     if (!guard.hp) { guard.fall=Math.min(1,guard.fall+dt*3.4); continue; }
@@ -1139,7 +1327,7 @@ function makeGuard(x,z,cell,yaw) {
 function canSee(g,dx,dz,dist,crouched) {
   const P=PHASE[alertLevel];
   // sentries at a post watch a long sight line; crouching still helps
-  const range=P.range*(crouched && alertLevel<ALERT?.62:1)*(g.post && g.task==="post"?1.3:1);
+  const range=P.range*(crouched && alertLevel<ALERT?.62:1)*(g.post && g.task==="post"?1.3:1)*rule("sight",1)*levelSight();
   if (dist>range || dist<.01) return false;
   const facing=Math.cos(Math.atan2(dx,dz)-g.yaw);
   if (facing<P.fov && dist>2.2) return false;
@@ -1257,7 +1445,7 @@ function updateAlert(dt,travel,crouched) {
   stepTimer-=dt;
   if (travel>dt*2 && !crouched && stepTimer<=0) {
     stepTimer=.45;
-    const r=PHASE[alertLevel].hear;
+    const r=PHASE[alertLevel].hear*rule("hear",1);
     if (guards.some(g=>g.hp && Math.abs(g.x-player.x)<r+2 && Math.abs(g.z-player.z)<r+2)) makeNoise(player.x,player.z,r,"step");
   }
   if (alertLevel===ALERT) {
@@ -1414,13 +1602,18 @@ function buildTextures() {
         const weave=((x+(y>>1))&1)?1.06:.92;
         c=base.map(v=>v*weave*(.85+.25*n));
         if (fine<.08) c=c.map(v=>v*.82);
-      } else if (id===9) {
+      } else if (id===9 || id===15) {
         // painted steel drum: two rolling hoops, chipped paint, rust at the rims
         const ly=y&31, hoop=ly===7||ly===8||ly===23||ly===24;
         c=base.map(v=>v*(.86+.2*n)*(hoop?(ly&1?.7:1.2):1));
         if (ly<2 || ly>29) c=mix(c,rust,.6);
         if (vnoise(x,y,8,40)>.7) c=mix(c,rust,.7);
-        if (ly>12 && ly<19 && (x&15)>3 && (x&15)<12) c=palette.stripe.map(v=>v*.85);
+        if (id===9 && ly>12 && ly<19 && (x&15)>3 && (x&15)<12) c=palette.stripe.map(v=>v*.85);
+        if (id===15 && ly>10 && ly<21) {
+          // fuel drum: white band with a black flame diamond
+          const lx=x&15, dd=Math.abs(lx-7.5)+Math.abs(ly-15.5);
+          c=dd<4.2?(dd<3.2?[34,30,28]:[220,214,200]):[214,206,190];
+        }
       } else if (id===10) {
         // reinforced concrete: smooth panels, steel edge bands and anchor bolts
         const lx=x&31, ly=y&31;
@@ -1769,8 +1962,8 @@ function surface(id,side,nx,ny,nz,vx,vy,vz,px,py,pz) {
       if ((hr&3)===0) paint([110,58,34],Math.max(0,.55-fract(py/4.5)*.9)*((hr>>2&7)/7));
     } else {
       // painted hazard stripes on the edges of every opening
-      const edgeLo=fa<.32 && !(side===0?tile(vx,iy,vz-1):tile(vx-1,iy,vz)) && !lo;
-      const edgeHi=fa>.68 && !(side===0?tile(vx,iy,vz+1):tile(vx+1,iy,vz)) && !hi;
+      const edgeLo=fa<.32 && !(side===0?tile(vx,iy,vz-1):tile(vx-1,iy,vz)) && !lo && !(side===0?tile(vx,1,vz-1):tile(vx-1,1,vz));
+      const edgeHi=fa>.68 && !(side===0?tile(vx,iy,vz+1):tile(vx+1,iy,vz)) && !hi && !(side===0?tile(vx,1,vz+1):tile(vx+1,1,vz));
       if ((edgeLo || edgeHi) && py<5.6 && py>1.05) {
         const s=Math.floor((au+py)*2.6)&1?palette.stripe:palette.stripeDark;
         AR=s[0]; AG=s[1]; AB=s[2]; k*=.85+.15*fract(h3(Math.floor(au*12),Math.floor(py*12),5)/4096);
@@ -1833,6 +2026,12 @@ function surface(id,side,nx,ny,nz,vx,vy,vz,px,py,pz) {
       }
     }
   } else if (id===13 || id===14) truckDetail(id,side,px,py,pz);
+  if (theme.rules.moss && (id===2 || id===10 || id===1 || id===12)) {
+    // moss creeping up from the floor and down from the wall tops, in clumps
+    const m=(h3(Math.floor(px*1.3),Math.floor(py*1.3),Math.floor(pz*1.3)+77)&255)/255*.6+(h3(Math.floor(px*5),Math.floor(py*5),Math.floor(pz*5)+78)&255)/255*.4;
+    const where=side===1?.75:Math.max(0,1-(py-1)/3)+Math.max(0,(py-(wallTop-1.6))/1.6);
+    if (m*where>.32) paint([60,84,42],Math.min(.75,(m*where-.32)*1.8));
+  }
   AR*=k; AG*=k; AB*=k;
   return ao;
 }
@@ -2095,6 +2294,16 @@ function render(clock) {
     }
     sprite(b.x,b.y,b.z,.08,.08,()=>[255,245,210]);
   }
+  for (const g of grenades) {
+    const lit=spriteLight(g.x,g.y,g.z), blink=Math.sin(g.fuse*(g.fuse<.8?40:14))>0;
+    sprite(g.x,g.y+.12,g.z,.3,.3,(u,v)=>{
+      const d=(u-.5)**2+(v-.55)**2;
+      if (v<.2) return Math.abs(u-.55)<.12?[70,72,66]:null;                     // fuse head
+      if (d>.16) return;
+      return d<.02 && u<.45?[120,128,96]:[58,66,44];
+    },1,true,lit);
+    if (blink) sprite(g.x,g.y+.3,g.z,.35,.35,glowAt(255,60,40,.9));
+  }
   // wall lamps: a caged bulb on a bracket, with a soft halo
   for (const L of lamps) {
     if (L.dead) continue;
@@ -2334,8 +2543,10 @@ function touchLayout() {
   const reload={x:portrait?w/2+gap:fire.x-r-r2-16, y:rowY, r:r2};
   const plant={x:reload.x-gap, y:rowY, r:r2};
   const duck={x:plant.x-gap, y:rowY, r:r2};
+  // grenade: above PLANT in landscape, at the end of the row in portrait
+  const nade=portrait?{x:duck.x-gap, y:rowY, r:r2}:{x:plant.x, y:rowY-gap, r:r2};
   const pause=portrait?{x:w/2, y:Math.round(innerWidth*.75)+36, r:20}:{x:w*.36, y:32, r:20};
-  return {w,h,R,home,buttons:{fire,reload,plant,duck,pause}};
+  return {w,h,R,home,buttons:{fire,reload,plant,duck,nade,pause}};
 }
 if (isTouch) {
   document.querySelector("main").classList.add("touch");
@@ -2355,6 +2566,7 @@ if (isTouch) {
       touchLook.id=e.pointerId; touchLook.ox=B.fire.x; touchLook.oy=B.fire.y; touchLook.x=touchLook.y=0; return; }
     if (hit(p,B.reload)) { reloadRifle(); return; }
     if (hit(p,B.plant)) { breach(); return; }
+    if (hit(p,B.nade)) { throwGrenade(); return; }
     if (hit(p,B.duck)) { touchCrouch=!touchCrouch; return; }
     if (p.x<L.w/2) { touchJoy.id=e.pointerId; touchJoy.ox=p.x; touchJoy.oy=p.y; touchMove.x=touchMove.y=0; return; }
     touchLook.id=e.pointerId; touchLook.ox=p.x; touchLook.oy=p.y; touchLook.x=touchLook.y=0;
@@ -2416,6 +2628,7 @@ function drawTouch() {
   btn(B.reload,"RELOAD",!!reload,"#a9d9bd");
   btn(B.plant,"PLANT",false,"#a9d9bd");
   btn(B.duck,"DUCK",touchCrouch,"#a9d9bd");
+  btn(B.nade,"NADE "+grenadeCount,throwCool>0,grenadeCount?"#f2b76b":"#5b6b62");
   btn(B.pause,"II",false,"#a9d9bd");
   c.globalAlpha=1;
 }
@@ -2428,7 +2641,15 @@ function pauseTouch() {
 
 deploy.addEventListener("click",()=>{
   document.querySelector("#device-note").hidden=true;   // start-screen notice only
-  if (phase==="won" || phase==="lost") { reset(); resultsEl.hidden=entryEl.hidden=boardEl.hidden=true; lastResult=null; overlay.querySelector("article").classList.remove("scored"); }
+  if (phase==="won" || phase==="lost" || phase==="ended") {
+    // after a win: on to the next base. After a loss or a finished run: start a new run from level 1.
+    if (phase==="won") campaign.level++;
+    else campaign={level:1,total:0,time:0,cleared:0};
+    theme=pickTheme();
+    reset(); resultsEl.hidden=entryEl.hidden=boardEl.hidden=true; lastResult=null; overlay.querySelector("article").classList.remove("scored");
+    showBriefing();
+    return;                                   // show the new base's briefing; DEPLOY starts it
+  }
   const Audio = window.AudioContext || window.webkitAudioContext;
   if (Audio) {
     audio ??= new Audio();
@@ -2468,6 +2689,7 @@ document.addEventListener("keydown",e=>{
   keys.add(e.code);
   if (e.repeat) return;
   if (e.code==="KeyQ") breach();
+  if (e.code==="KeyG") throwGrenade();
   if (e.code==="KeyR") reloadRifle();
 });
 document.addEventListener("keyup",e=>keys.delete(e.code));
@@ -2492,7 +2714,7 @@ function frame(ms) {
   health.textContent=String(player.hp).padStart(2,"0");
   healthFill.style.width=player.hp+"%";
   healthFill.classList.toggle("low",player.hp<=36);
-  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG";
+  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN";
   message.textContent=charge?(charge.plant>0
     ? "PLANTING CHARGE"
     : "CHARGE ARMED  "+charge.fuse.toFixed(1)+" S")

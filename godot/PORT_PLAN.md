@@ -49,6 +49,12 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 - v8: leaderboard reads only the JSON part of the bin's reply.
 - v9: start-screen notice that the game plays much better on desktop. Mobile is still the weak spot; in Godot, consider shipping desktop first.
 
+## v12 changes to port
+- Campaign: `THEMES`, `campaign`, `pickTheme`, `levelSight`, `levelGarrison`; `planLayout(random, theme.plan)` takes options (see `PLAN_DEFAULTS`) and now also returns `windows` ([a, b, barred]) and fuel flags on drum props.
+- Material 15 fuel drum; `explode()` is the one shared explosion (charges, grenades, drums); `armDrums`/`updateBlasts` chain drums.
+- Grenades: `throwGrenade`/`updateGrenades` (speed 12.5 + 4 up, gravity 16, bounce 0.45, fuse 2.2 s).
+- Leaderboard entries: [initials, run total, seconds, levels cleared].
+
 ## v10 changes to port
 - **Map plan:** `planLayout(random)` in `bunker-buster.js` (between the `MAP PLAN` markers) now decides the whole level on the room grid: maze + loops, spawn foyer (3x2 rooms, five exits, sentry post straight ahead), atrium with reinforced pillars, 1-2 courtyards with a truck, an optional 4-room hall, barred gates (only on loop passages), up to 3 crouch vents, reinforced walls (22% + the intel vault), guard posts and room props. Random calls are in a fixed order. **To do:** port it as `MapPlan.cs` (extend `MazeGenerator.cs`) and regenerate the reference JSON. `reset()` stamps the plan into voxels.
 - **New materials:** 8 sandbags, 9 drum, 10 reinforced concrete (bullets stop; a charge turns it into ordinary concrete), 11 steel bars, 12 yard asphalt, 13/14 truck. 7, 8, 9 and 11 are drawn as sub-voxel shapes (`SHAPE`, `shapeOcc`); in Godot these become small meshes or MultiMesh props.
