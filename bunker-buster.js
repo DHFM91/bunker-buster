@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v14";
+const VERSION = "v15";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -2735,7 +2735,7 @@ function frame(ms) {
   health.textContent=String(player.hp).padStart(2,"0");
   healthFill.style.width=player.hp+"%";
   healthFill.classList.toggle("low",player.hp<=36);
-  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN"+(isTouch?"":" · PRESS G");
+  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN"+(isTouch?"":" (PRESS G)");
   message.textContent=charge?(charge.plant>0
     ? "PLANTING CHARGE"
     : "CHARGE ARMED  "+charge.fuse.toFixed(1)+" S")
