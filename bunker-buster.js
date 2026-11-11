@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v15";
+const VERSION = "v16";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -934,8 +934,10 @@ function scoreRun(won) {
   lines.push(["Soldiers downed", downed+" × "+SCORE.guard, downed*SCORE.guard]);
   lines.push(["Concrete destroyed", run.blocks+" × "+SCORE.block, run.blocks*SCORE.block]);
   const subtotal=lines.reduce((a,l)=>a+l[2],0);
-  const penalty=Math.round(subtotal*Math.min(100,damage)/100);
-  return {lines,subtotal,damage,penalty,total:Math.max(0,subtotal-penalty),time:run.time,won};
+  // dying caps the damage penalty at 50%, so whatever you did on the way down still counts
+  const cut=won?Math.min(100,damage):50;
+  const penalty=Math.round(subtotal*cut/100);
+  return {lines,subtotal,damage,cut,penalty,total:Math.max(0,subtotal-penalty),time:run.time,won};
 }
 function fmtTime(t) { const m=Math.floor(t/60), s=t-m*60; return m+":"+(s<10?"0":"")+s.toFixed(2); }
 
@@ -945,7 +947,8 @@ function finish(won,why) {
   overlay.hidden=false;
   const r=scoreRun(won);
   campaign.time+=run.time;
-  if (won) { campaign.total+=r.total; campaign.cleared++; }
+  campaign.total+=r.total;
+  if (won) campaign.cleared++;
   document.querySelector("#op-line").textContent="LEVEL "+campaign.level+" / "+theme.name;
   if (won) {
     title.textContent="LEVEL "+campaign.level+" CLEAR";
@@ -1019,7 +1022,7 @@ async function showResults(r,final) {
   resultsEl.innerHTML=`<table>`+
     r.lines.map(l=>row(l[0],l[1],l[2].toLocaleString())).join("")+
     row("Subtotal","",r.subtotal.toLocaleString(),"sub")+
-    row("Damage taken",r.damage+" HP → −"+Math.min(100,r.damage)+"%",(r.penalty?"−":"")+r.penalty.toLocaleString(),r.penalty?"pen":"")+
+    row(r.won?"Damage taken":"Killed in action",r.won?r.damage+" HP → −"+r.cut+"%":"−50%",(r.penalty?"−":"")+r.penalty.toLocaleString(),r.penalty?"pen":"")+
     row("Level "+campaign.level+" score","",r.total.toLocaleString(),"sub")+
     row("RUN TOTAL",campaign.cleared+" level"+(campaign.cleared===1?"":"s"),campaign.total.toLocaleString(),"total")+`</table>`;
   resultsEl.hidden=false; entryEl.hidden=true; overlay.querySelector("article").classList.add("scored");

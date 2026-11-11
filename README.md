@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v16:** dying no longer wipes out the level: you keep half of what you scored on it (soldiers downed, concrete destroyed), it adds to your run total, and you can post that total to the leaderboard.
 - **v15:** grenade reminder reads "3 GRN (PRESS G)" so it reads as one item.
 - **v14:** grenades now blow holes in concrete walls (smaller than a breach charge) and crack reinforced walls; the kit readout shows "3 GRN · PRESS G" on desktop as a reminder.
 - **v13:** Night Raid is now seen through green night-vision goggles that auto-adjust their brightness, with soldiers standing out brighter than the walls; night weather in the other themes is brighter too.
