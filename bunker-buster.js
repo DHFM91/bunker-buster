@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v9";
+const VERSION = "v10";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -40,37 +40,63 @@ const X=(columns-1)*stride+room+2, Y=12, Z=(rows-1)*stride+room+2;
 const midCol=Math.floor(columns/2);
 const firstCell=midCol, lastCell=(rows-1)*columns+midCol;
 const world = new Uint8Array(X * Y * Z);
-let colors = [[0,0,0], [76,82,75], [153,139,108], [66,83,84],
-  [43,160,106], [229,143,47], [108,84,57], [124,112,92]];
-// Per-deploy colour scheme. Intel (orange) and extraction pad (green) never change so
-// objectives always read the same; everything else is re-rolled on each load.
-let palette = {stripe:[178,126,53], stripeDark:[60,57,45], skyLo:[105,124,128], skyHi:[46,77,92]};
+let colors = [[0,0,0], [96,98,94], [150,148,142], [96,72,58],
+  [43,160,106], [229,143,47], [86,94,62], [124,121,116],
+  [150,132,96], [86,98,60], [104,110,116], [62,58,54], [58,60,60], [92,98,66], [34,36,38]];
+// Per-deploy look: a time of day and weather (sky, sun, ambient light, lamp colour) plus the paint on the
+// base. Kept within believable ranges so it reads as a real place. Intel (orange) and extraction pad (green)
+// never change so objectives always read the same.
+let palette = {stripe:[214,176,40], stripeDark:[34,32,28], skyLo:[150,160,166], skyHi:[70,92,112],
+  sun:[1,.94,.82], amb:[.5,.54,.6], lamp:[1,.72,.42], lampK:.8, cloud:[200,200,204], clouds:.5, glare:1,
+  sunDir:[.36,.78,.51], fog:[120,128,134]};
 function hsl(h,s,l) {
   h=((h%360)+360)%360/360;
   const f=n=>{ const k=(n+h*12)%12, a=s*Math.min(l,1-l); return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))); };
   return [f(0),f(8),f(4)];
 }
+const MOODS={
+  //        sky low (horizon)   sky high          sun colour        sun  amb   lamps elev(deg)  clouds
+  dusk:    {lo:[22,.55,.62], hi:[222,.35,.3],  sun:[1,.66,.4],   k:1.05, a:.48, l:1.1, el:[22,34], c:.55},
+  day:     {lo:[200,.3,.74], hi:[212,.5,.46],  sun:[1,.96,.88],  k:1.1,  a:.58, l:.5,  el:[48,68], c:.45},
+  overcast:{lo:[205,.06,.66],hi:[210,.08,.47], sun:[.86,.88,.9], k:.42,  a:.72, l:.8,  el:[45,65], c:.95},
+  smog:    {lo:[50,.28,.6],  hi:[70,.12,.36],  sun:[1,.84,.58],  k:.85,  a:.52, l:.9,  el:[30,48], c:.7},
+  night:   {lo:[222,.3,.24], hi:[232,.4,.09],  sun:[.42,.5,.72], k:.45,  a:.62, l:1.6, el:[35,60], c:.35},
+};
 function rollPalette(random=Math.random) {
-  const r=(a,b)=>a+random()*(b-a);
+  const r=(a,b)=>a+random()*(b-a), pick=a=>a[Math.floor(random()*a.length)];
   const hue=r(0,360);
-  const concrete=hsl(hue+r(-20,20),r(.08,.3),r(.42,.6));
-  const floor=hsl(hue+r(-60,60),r(.05,.2),r(.24,.36));
-  const outer=hsl(hue+r(120,240),r(.08,.25),r(.22,.34));
-  // hazard-stripe accent: kept away from the intel's orange and the pad's green
-  const accentHue=[0,52,190,215,280,320][Math.floor(random()*6)]+r(-8,8);
-  const skyHue=hue+r(-90,90);
+  const concrete=hsl(hue,r(.03,.1),r(.52,.62));
+  const floor=hsl(hue+r(-25,25),r(.03,.08),r(.38,.46));
+  const [oh,os,ol]=pick([[22,.42,.32],[28,.3,.3],[80,.16,.3],[205,.12,.34],[0,0,.3]]);
+  const outer=hsl(oh+r(-6,6),os,ol);
+  const reinforcedCol=hsl(hue+r(160,200),r(.03,.08),r(.42,.5));
+  const yard=hsl(hue,r(.02,.05),r(.24,.3));
+  const [th,ts,tl]=pick([[75,.25,.3],[40,.3,.42],[200,.1,.36],[110,.2,.26]]);
+  const truck=hsl(th+r(-5,5),ts,tl);
+  const drum=pick([[80,.3,.3],[210,.35,.32],[0,.45,.34],[45,.55,.4]]);
+  // hazard paint: mostly yellow, sometimes red/white or blue; never the intel's orange or the pad's green
+  const accentHue=pick([52,50,46,0,210,280])+r(-4,4);
+  const mood=MOODS[pick(["dusk","day","day","overcast","overcast","smog","night"])];
+  const sky=(h,s,l)=>hsl(h+r(-12,12),s*r(.8,1.2),l*r(.92,1.06));
+  const skyLo=sky(...mood.lo), skyHi=sky(...mood.hi);
+  const el=r(...mood.el)*Math.PI/180, az=r(0,Math.PI*2);
+  const sunDir=[Math.cos(el)*Math.sin(az),Math.sin(el),Math.cos(el)*Math.cos(az)];
+  const amb=[0,1,2].map(c=>mood.a*(.6*skyLo[c]+.4*skyHi[c])/150);
+  const lamp=random()<.6?[1,.7,.4]:[.82,.95,1];
   palette={
-    stripe:hsl(accentHue,r(.55,.8),r(.42,.55)), stripeDark:hsl(accentHue+180,.1,.18),
-    skyLo:hsl(skyHue,r(.1,.35),r(.38,.6)), skyHi:hsl(skyHue+r(-20,20),r(.2,.45),r(.16,.3)),
+    stripe:hsl(accentHue,r(.6,.8),r(.45,.55)), stripeDark:hsl(accentHue+180,.08,.14),
+    skyLo, skyHi, sunDir, sun:mood.sun.map(c=>c*mood.k), amb, lamp, lampK:mood.l,
+    clouds:mood.c, cloud:hsl(skyLo[0],.05,.5).map((c,i)=>(c+skyLo[i])/2), glare:mood.k,
+    fog:[0,1,2].map(c=>skyLo[c]*.62+skyHi[c]*.18),
   };
-  colors=[[0,0,0], floor, concrete, outer, [43,160,106], [229,143,47], [108,84,57],
-    concrete.map(c=>c*.82)];
-  const fogMix=hsl(skyHue,.12,.24);
+  colors=[[0,0,0], floor, concrete, outer, [43,160,106], [229,143,47], [86,94,62],
+    concrete.map(c=>c*.86), [150,132,96], hsl(...drum), reinforcedCol, [62,58,54], yard, truck, [32,34,36]];
   for (let c=0;c<3;c++) {
-    groundFog[c]=fogMix[c];
-    dustColor[c]=concrete[c]*.95; rubbleColor[c]=Math.min(255,concrete[c]*1.15);
+    groundFog[c]=palette.fog[c];
+    dustColor[c]=concrete[c]*.95; rubbleColor[c]=Math.min(255,concrete[c]*1.1);
   }
   textures=buildTextures();
+  sunVis.fill(255);
 }
 function cellCenter(cell) {
   return {x:1+cell%columns*stride+room/2, z:1+Math.floor(cell/columns)*stride+room/2};
@@ -105,6 +131,11 @@ function box(x0,y0,z0,x1,y1,z1,material) {
       for (let x=x0; x<x1; x++) world[index(x,y,z)] = material;
 }
 
+// ===== MAP PLAN (pure: room-grid layout only, no voxels; mirrored by godot/scripts/MapPlan.cs) =====
+// planLayout(random) decides the whole level on the 7x10 room grid: the maze, loops, the spawn foyer,
+// merged spaces (courtyards, an atrium, a long hall), reinforced walls, barred gates, crawl vents,
+// guard posts and room dressing. reset() then stamps the plan into voxels.
+// Random calls happen in a fixed order so a seeded generator reproduces the same plan in C#.
 // Random depth-first traversal opens one passage per newly visited room.
 function generateMaze(random) {
   for (let attempt=0; attempt<96; attempt++) {
@@ -137,7 +168,176 @@ function generateMaze(random) {
   });
   return snake.slice(1).map((cell,i)=>[snake[i],cell]);
 }
+const MIN_REACH=21;          // fewest room-steps from the foyer to the intel once merges and vents are added
+const pairKey=(a,b)=>a<b?a*1000+b:b*1000+a;
+function planLayout(random) {
+  let best=null;
+  for (let attempt=0; attempt<20; attempt++) {
+    const plan=planOnce(random);
+    if (plan.reach>=MIN_REACH) return plan;
+    if (!best || plan.reach>best.reach) best=plan;
+  }
+  return best;
+}
+function planOnce(random) {
+  const cellOf=(c,r)=>r*columns+c;
+  const passages=generateMaze(random);
+  const treeCount=passages.length;
+  // a few extra openings turn the perfect maze into loops, so sweeps and flanking routes exist
+  for (let k=0;k<Math.round(columns*rows*.08);k++) {
+    const cell=Math.floor(random()*columns*rows), right=random()<.5;
+    const col=cell%columns, row=Math.floor(cell/columns);
+    if (right && col<columns-1) passages.push([cell,cell+1]);
+    else if (!right && row<rows-1) passages.push([cell,cell+columns]);
+  }
+  const treeKeys=new Set(passages.map(([a,b])=>pairKey(a,b)));
+  const extras=passages.slice(treeCount).filter(([a,b])=>!treeKeys.has(pairKey(a,b)));
+  const owner=new Int16Array(columns*rows).fill(-1);      // which merged space a room belongs to
+  const spaces=[];
+  const free=(c,r,w,h)=>{
+    if (c<0 || r<0 || c+w>columns || r+h>rows) return false;
+    for (let y=r;y<r+h;y++) for (let x=c;x<c+w;x++) if (owner[cellOf(x,y)]>=0 || cellOf(x,y)===lastCell) return false;
+    return true;
+  };
+  const claim=(c,r,w,h,kind)=>{
+    for (let y=r;y<r+h;y++) for (let x=c;x<c+w;x++) owner[cellOf(x,y)]=spaces.length;
+    spaces.push({kind,col:c,row:r,w,h});
+  };
+  // Spawn foyer: a clear 3x2-room hall against the far wall with four ways out, all visible from the pad.
+  claim(midCol-1,0,3,2,"foyer");
+  const leftRow=random()<.5?0:1, rightRow=random()<.5?0:1;
+  passages.push([cellOf(midCol-1,1),cellOf(midCol-1,2)],[cellOf(midCol,1),cellOf(midCol,2)],[cellOf(midCol+1,1),cellOf(midCol+1,2)],
+    [cellOf(midCol-2,leftRow),cellOf(midCol-1,leftRow)],[cellOf(midCol+1,rightRow),cellOf(midCol+2,rightRow)]);
+  // Central atrium with reinforced pillars.
+  if (random()<.6 && free(midCol-1,4,3,2)) claim(midCol-1,4,3,2,"atrium");
+  // Courtyards: open yards with vehicles and low cover.
+  const yardCount=1+(random()<.5?1:0);
+  for (let y=0;y<yardCount;y++) {
+    for (let t=0;t<12;t++) {
+      const [w,h]=[[2,2],[3,2],[2,3]][Math.floor(random()*3)];
+      const c=Math.floor(random()*(columns-w+1)), r=3+Math.floor(random()*(rows-4-h));
+      if (free(c,r,w,h)) { claim(c,r,w,h,"yard"); break; }
+    }
+  }
+  // A long hall: four rooms in a row knocked through.
+  if (random()<.5) for (let t=0;t<10;t++) {
+    const r=3+Math.floor(random()*5), c=Math.floor(random()*(columns-3));
+    if (free(c,r,4,1)) { claim(c,r,4,1,"hall"); break; }
+  }
+  const linked=new Set(passages.map(([a,b])=>pairKey(a,b)));
+  const sameSpace=(a,b)=>owner[a]>=0 && owner[a]===owner[b];
+  const open=(a,b)=>linked.has(pairKey(a,b)) || sameSpace(a,b);
+  // every pair of side-by-side rooms, in a fixed order
+  const pairs=[];
+  for (let cell=0;cell<columns*rows;cell++) {
+    const col=cell%columns, row=Math.floor(cell/columns);
+    if (col<columns-1) pairs.push([cell,cell+1]);
+    if (row<rows-1) pairs.push([cell,cell+columns]);
+  }
+  // Barred gates on loop passages (never on the maze's own spanning tree, so guards can always walk round).
+  const barred=[];
+  for (const [a,b] of extras) if (!sameSpace(a,b) && owner[a]<0 && owner[b]<0 && random()<.5) barred.push([a,b]);
+  // Crawl vents: knee-high gaps through a solid wall. Crouch to fit; guards can't follow.
+  const vents=[], ventKeys=new Set();
+  for (let t=0;t<40 && vents.length<3;t++) {
+    const [a,b]=pairs[Math.floor(random()*pairs.length)];
+    if (open(a,b) || ventKeys.has(pairKey(a,b)) || owner[a]===0 || owner[b]===0) continue;
+    vents.push([a,b]); ventKeys.add(pairKey(a,b));
+  }
+  // Reinforced walls: take two charges and stop bullets. The intel room is a vault.
+  const reinforced=[];
+  for (const [a,b] of pairs) {
+    if (open(a,b) || ventKeys.has(pairKey(a,b))) continue;
+    if (a===lastCell || b===lastCell || random()<.22) reinforced.push([a,b]);
+  }
+  // Guard posts: a sandbag nest with a sentry. One always watches the way in from just past the foyer.
+  const posts=[{cell:cellOf(midCol,2),facing:0}];
+  for (let t=0;t<30 && posts.length<3;t++) {
+    const cell=Math.floor(random()*columns*rows), facing=Math.floor(random()*4);
+    if (Math.floor(cell/columns)<3 || owner[cell]>=0 || cell===lastCell || posts.some(p=>p.cell===cell)) continue;
+    posts.push({cell,facing});
+  }
+  // Room dressing: wall lamps and clutter in corners. Sides: 0 +z, 1 +x, 2 -z, 3 -x. Corners 0..3.
+  const props=[];
+  for (let cell=0;cell<columns*rows;cell++) {
+    const lamp=random(), side=Math.floor(random()*4), clutter=random(), corner=Math.floor(random()*4);
+    if (owner[cell]===0 || posts.some(p=>p.cell===cell)) continue;
+    if (lamp<.45) props.push({type:"lamp",cell,side});
+    if (cell===lastCell) continue;
+    if (clutter<.3) props.push({type:"crates",cell,corner});
+    else if (clutter<.5) props.push({type:"barrels",cell,corner});
+    else if (clutter<.6) props.push({type:"sandbags",cell,side});
+  }
+  // Yards: one parked truck and some low cover each.
+  for (const s of spaces) if (s.kind==="yard") {
+    s.truck={along:random()<.5?"x":"z", shift:random()};
+    s.cover=1+Math.floor(random()*3);
+  }
+  // How far is the intel from the foyer once merges and vents are counted? (gates stay shut)
+  const shut=new Set(barred.map(([a,b])=>pairKey(a,b)));
+  const dist=new Int16Array(columns*rows).fill(-1), queue=[firstCell];
+  dist[firstCell]=0;
+  for (let q=0;q<queue.length;q++) {
+    const a=queue[q], col=a%columns, row=Math.floor(a/columns);
+    for (const b of [col>0?a-1:-1, col<columns-1?a+1:-1, row>0?a-columns:-1, row<rows-1?a+columns:-1]) {
+      if (b<0 || dist[b]>=0) continue;
+      const k=pairKey(a,b);
+      if (!((open(a,b) && !shut.has(k)) || ventKeys.has(k))) continue;
+      dist[b]=dist[a]+1; queue.push(b);
+    }
+  }
+  return {passages,spaces,owner,barred,vents,reinforced,posts,props,reach:dist[lastCell]};
+}
+// ===== END MAP PLAN =====
 
+// ===== Stamping the plan into voxels =====
+// Materials: 0 air, 1 floor, 2 concrete, 3 outer wall, 4 pad, 6 crate, 7 rubble, 8 sandbags, 9 drum,
+// 10 reinforced concrete, 11 steel bars, 12 yard asphalt, 13 truck body, 14 truck chassis/glass.
+let plan=null, lamps=[], foyerBox=null, yardBoxes=[], trucks=[];
+function roomBox(cell) {
+  const {x,z}=cellCenter(cell);
+  return {x0:x-room/2, z0:z-room/2, x1:x+room/2, z1:z+room/2};
+}
+function spaceBox(s) {
+  const a=roomBox(s.row*columns+s.col), b=roomBox((s.row+s.h-1)*columns+s.col+s.w-1);
+  return {x0:a.x0, z0:a.z0, x1:b.x1, z1:b.z1};
+}
+// the 3-voxel wall slab between two side-by-side rooms
+function slab(a,b) {
+  const A=roomBox(Math.min(a,b)), B=roomBox(Math.max(a,b));
+  return Math.abs(a-b)===1 ? {x0:A.x1, x1:B.x0, z0:A.z0, z1:A.z1, axis:"x"}
+    : {x0:A.x0, x1:A.x1, z0:A.z1, z1:B.z0, axis:"z"};
+}
+function swap(x0,y0,z0,x1,y1,z1,from,to) {
+  for (let y=y0;y<y1;y++) for (let z=z0;z<z1;z++) for (let x=x0;x<x1;x++)
+    if (world[index(x,y,z)]===from) world[index(x,y,z)]=to;
+}
+function put(x,y0,z,y1,m) { if (inside(x,y0,z) && !tile(x,y0,z)) box(x,y0,z,x+1,y1,z+1,m); }
+function addLamp(x,y,z,nx,nz,r=7,power=1) {
+  lamps.push({x,y,z,nx,nz,r,power,ax:Math.floor(x-nx*.5),ay:Math.floor(y),az:Math.floor(z-nz*.5),dead:false});
+}
+// a wall lamp in the middle of one side of a room, only if there is wall behind it
+function roomLamp(cell,side) {
+  const b=roomBox(cell), cx=(b.x0+b.x1)/2, cz=(b.z0+b.z1)/2;
+  const spot=[[cx,b.z1-.06,0,-1],[b.x1-.06,cz,-1,0],[cx,b.z0+.06,0,1],[b.x0+.06,cz,1,0]][side];
+  const [x,z,nx,nz]=spot;
+  if (!tile(Math.floor(x-nx*.5),7,Math.floor(z-nz*.5))) return;
+  addLamp(x,6.7,z,nx,nz);
+}
+function stampTruck(b,along,shift) {
+  // a canvas-backed cargo truck: dark chassis and wheels, cab with windows, tall covered bed
+  const len=6, wid=3, spanX=along==="x"?len:wid, spanZ=along==="x"?wid:len;
+  const x0=b.x0+2+Math.floor(shift*(b.x1-b.x0-4-spanX+1)), z0=b.z0+2+Math.floor((1-shift)*(b.z1-b.z0-4-spanZ+1));
+  for (let i=0;i<len;i++) for (let j=0;j<wid;j++) {
+    const x=along==="x"?x0+i:x0+j, z=along==="x"?z0+j:z0+i;
+    box(x,1,z,x+1,2,z+1,14);
+    if (i<2) { box(x,2,z,x+1,3,z+1,13); box(x,3,z,x+1,4,z+1,14); }
+    else box(x,2,z,x+1,5,z+1,13);
+  }
+  const t={x0,z0,x1:x0+spanX,z1:z0+spanZ,along};
+  trucks.push(t);
+  return t;
+}
 function reset(random=Math.random) {
   rollPalette();
   run={time:0,blocks:0};
@@ -152,33 +352,106 @@ function reset(random=Math.random) {
     const {x,z}=cellCenter(cell);
     box(x-room/2,1,z-room/2,x+room/2,wallTop,z+room/2,0);
   }
-  const passages=generateMaze(random);
-  // a few extra openings turn the perfect maze into loops, so sweeps and flanking routes exist
-  for (let k=0;k<Math.round(columns*rows*.08);k++) {
-    const cell=Math.floor(random()*columns*rows), right=random()<.5;
-    const col=cell%columns, row=Math.floor(cell/columns);
-    if (right && col<columns-1) passages.push([cell,cell+1]);
-    else if (!right && row<rows-1) passages.push([cell,cell+columns]);
-  }
-  for (const [from,to] of passages) {
+  plan=planLayout(random);
+  for (const [from,to] of plan.passages) {
     const a=cellCenter(from), b=cellCenter(to);
     box(Math.min(a.x,b.x)-room/2,1,Math.min(a.z,b.z)-room/2,
       Math.max(a.x,b.x)+room/2,wallTop,Math.max(a.z,b.z)+room/2,0);
+  }
+  yardBoxes=[]; foyerBox=null; trucks=[];
+  for (const s of plan.spaces) {
+    const b=spaceBox(s);
+    box(b.x0,1,b.z0,b.x1,wallTop,b.z1,0);
+    if (s.kind==="foyer") foyerBox=b;
+    if (s.kind==="atrium") {
+      // the wall crossings between the merged rooms stay up as reinforced pillars
+      for (let i=0;i<s.w-1;i++) for (let j=0;j<s.h-1;j++) {
+        const r=roomBox((s.row+j)*columns+s.col+i);
+        box(r.x1,1,r.z1,r.x1+3,wallTop,r.z1+3,10);
+      }
+    }
+    if (s.kind==="yard") { box(b.x0,0,b.z0,b.x1,1,b.z1,12); yardBoxes.push(b); }
+  }
+  for (const [a,b] of plan.reinforced) { const s=slab(a,b); swap(s.x0,1,s.z0,s.x1,wallTop,s.z1,2,10); }
+  for (const [a,b] of plan.barred) {
+    // a gate of steel bars in the middle of the doorway, with a concrete lintel above it
+    const s=slab(a,b);
+    if (s.axis==="x") { box(s.x0+1,1,s.z0,s.x0+2,5,s.z1,11); box(s.x0+1,5,s.z0,s.x0+2,wallTop,s.z1,2); }
+    else { box(s.x0,1,s.z0+1,s.x1,5,s.z0+2,11); box(s.x0,5,s.z0+1,s.x1,wallTop,s.z0+2,2); }
+  }
+  for (const [a,b] of plan.vents) {
+    const s=slab(a,b);
+    if (s.axis==="x") box(s.x0,1,s.z0+2,s.x1,3,s.z0+4,0);
+    else box(s.x0+2,1,s.z0,s.x0+4,3,s.z1,0);
   }
 
   const padX=Math.floor(extraction.x), padZ=Math.floor(extraction.z);
   box(padX-2,0,padZ-2,padX+3,1,padZ+3,4);
   box(intelX,1,intelZ,intelX+1,2,intelZ+1,6);
+
+  // Foyer dressing: sandbag nests either side, crates and drums against the walls, floodlights behind the pad.
+  lamps=[];
+  if (foyerBox) {
+    const {x0,z0,x1,z1}=foyerBox, cx=Math.floor((x0+x1)/2);
+    for (const dir of [-1,1]) {
+      const nx=dir<0?x0+3:x1-4;                      // inner corner of each L-shaped nest
+      for (let k=0;k<4;k++) put(nx-dir*k,1,z0+7,3,8);
+      for (let k=1;k<3;k++) put(nx,1,z0+7+k,3,8);
+      const wallX=dir<0?x0:x1-1;
+      put(wallX,1,z0,3,6); put(wallX-dir,1,z0,2,6); put(wallX,1,z0+1,2,6);
+      put(wallX,1,z0+5,3,9); put(wallX,1,z0+6,3,9);
+      addLamp(cx+dir*6.5,7.2,z0+.06,0,1,15,1.5);
+    }
+  }
+  for (const s of plan.spaces) if (s.kind==="yard") {
+    const b=spaceBox(s), t=stampTruck(b,s.truck.along,s.truck.shift);
+    for (let n=0;n<s.cover;n++) {
+      // short sandbag lines and drum pairs, kept clear of the truck
+      const h=h3(b.x0+n,b.z0,n+7), x=b.x0+1+h%(b.x1-b.x0-4), z=b.z0+1+(h>>8)%(b.z1-b.z0-3);
+      if (x+3>t.x0-1 && x<t.x1+1 && z>t.z0-2 && z<t.z1+1) continue;
+      for (let k=0;k<3;k++) put(x+k,1,z,(h>>4)&1?3:2,8);
+      put(x,1,z+1,3,9);
+    }
+    addLamp((b.x0+b.x1)/2,7.4,b.z0+.06,0,1,10,1.1);
+  }
+  for (const p of plan.props) {
+    const b=roomBox(p.cell);
+    if (p.type==="lamp") { roomLamp(p.cell,p.side); continue; }
+    if (p.type==="sandbags") {
+      const cx=Math.floor((b.x0+b.x1)/2), cz=Math.floor((b.z0+b.z1)/2);
+      const [ex,ez,ox,oz]=[[cx,b.z1-1,1,0],[b.x1-1,cz,0,1],[cx,b.z0,1,0],[b.x0,cz,0,1]][p.side];
+      if (!tile(ex+(oz?(p.side===1?1:-1):0),2,ez+(ox?(p.side===0?1:-1):0))) continue;  // only against a wall
+      for (let k=-1;k<=1;k++) put(ex+ox*k,1,ez+oz*k,3,8);
+      continue;
+    }
+    const x=p.corner&1?b.x1-1:b.x0, z=p.corner&2?b.z1-1:b.z0, inx=p.corner&1?-1:1;
+    if (p.type==="crates") { put(x,1,z,(h3(x,z,1)&1)?3:2,6); put(x+inx,1,z,2,6); }
+    else { put(x,1,z,3,9); put(x+inx,1,z,3,9); }
+  }
+  // Guard posts: a horseshoe of sandbags open toward where the sentry looks.
+  const sentries=[];
+  for (const p of plan.posts) {
+    const b=roomBox(p.cell), cx=b.x0+2, cz=b.z0+2;
+    const [fx,fz]=[[0,1],[1,0],[0,-1],[-1,0]][p.facing];
+    for (let dz=-1;dz<=1;dz++) for (let dx=-1;dx<=1;dx++) {
+      if (!dx && !dz || dx===fx && fx || dz===fz && fz) continue;
+      put(cx+dx,1,cz+dz,3,8);
+    }
+    sentries.push({x:cx+.5,z:cz+.5,cell:p.cell,yaw:Math.atan2(fx,fz)});
+  }
+  buildLampField();
   Object.assign(player,{...extraction,eye:4.15,yaw:0,pitch:0,hp:100});
-  // Starting garrison: spread through the base, never in or beside the insertion room.
-  const taken=new Set();
-  guards=[];
-  for (let tries=0; guards.length<GARRISON && tries<400; tries++) {
+  // Starting garrison: sentries at their posts, the rest spread through the base, never near the foyer.
+  const taken=new Set(sentries.map(s=>s.cell));
+  guards=sentries.map(s=>{ const g=makeGuard(s.x,s.z,s.cell,s.yaw); g.post={x:s.x,z:s.z,yaw:s.yaw}; g.task="post"; return g; });
+  for (let tries=0; guards.length<GARRISON+sentries.length-1 && tries<400; tries++) {
     const cell=Math.floor(random()*columns*rows);
     const col=cell%columns, row=Math.floor(cell/columns);
-    if (taken.has(cell) || row<2 && Math.abs(col-midCol)<2) continue;
+    if (taken.has(cell) || row<3 && Math.abs(col-midCol)<3) continue;
+    let {x,z}=cellCenter(cell);
+    for (let k=0;k<8 && !canStand(x,z,4.4);k++) { x+=(h3(cell,k,1)%5)-2; z+=(h3(cell,k,2)%5)-2; }
+    if (!canStand(x,z,4.4)) continue;
     taken.add(cell);
-    const {x,z}=cellCenter(cell);
     guards.push(makeGuard(x,z,cell,random()*6.28));
   }
   alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; chaseField=null; chaseTimer=0; stepTimer=0;
@@ -186,6 +459,8 @@ function reset(random=Math.random) {
   flash=0; hurt=0; phase="ready"; hasIntel=false;
   notice=""; noticeTime=0; particles=[]; bullets=[];
   fallers=[]; pending.clear(); integrityTimer=0; shake=0; noise=null; charge=null; blast=null; stridePhase=0; sway=0;
+  decals.length=0; decalCount.fill(0); scorches.length=0;
+  markDirty(0,0,0); markDirty(X-1,Y-1,Z-1);
 }
 
 // Grid traversal returns the actual occupied cell hit by a ray.
@@ -201,9 +476,9 @@ function trace(x,y,z,dx,dy,dz,limit,out) {
   let t=0, side=0;
   while (t<=limit && inside(ix,iy,iz)) {
     const material=world[index(ix,iy,iz)];
-    if (material && (material!==7 || rubbleTrace(ix,iy,iz,x,y,z,dx,dy,dz,t,side,out))) {
+    if (material && (!SHAPE[material] || shapeTrace(material,ix,iy,iz,x,y,z,dx,dy,dz,t,side,out))) {
       out.x=ix; out.y=iy; out.z=iz;
-      if (material!==7) { out.t=t; out.side=side; }
+      if (!SHAPE[material]) { out.t=t; out.side=side; out.tint=1; }
       return material;
     }
     if (tx<ty && tx<tz) { t=tx; tx+=ax; ix+=sx; side=0; }
@@ -214,9 +489,11 @@ function trace(x,y,z,dx,dy,dz,limit,out) {
   return 0;
 }
 
-// Rubble cells are drawn as a heap of 4x4x4 sub-voxels instead of a solid cube.
-// Collision still uses the whole cell; only what you see (and what bullets hit) is the heap.
+// Some cells are drawn as a block of N x N x N sub-voxels instead of a solid cube: rubble heaps,
+// stacked sandbags, oil drums and steel bars. Collision still uses the whole cell; only what you see
+// (and what bullets and eyes hit) is the shape.
 function h3(a,b,c) { return (Math.imul(a,73856093)^Math.imul(b,19349663)^Math.imul(c,83492791))>>>0; }
+const SHAPE=[0,0,0,0,0,0,0,4,8,8,0,4];
 function rubbleOcc(ix,iy,iz,sx,sy,sz) {
   const h=h3(ix*4+sx,iy*4+sy,iz*4+sz);
   const above=tile(ix,iy+1,iz);
@@ -226,25 +503,64 @@ function rubbleOcc(ix,iy,iz,sx,sy,sz) {
       (sz===3 && tile(ix,iy,iz+1)===7) || (sz===0 && tile(ix,iy,iz-1)===7)) top+=1.3;  // heaps merge
   return sy<top && (sy===0 || (h&15)!==0);
 }
-function rubbleTrace(ix,iy,iz,x,y,z,dx,dy,dz,t,side,out) {
-  const px=(x+dx*t-ix)*4, py=(y+dy*t-iy)*4, pz=(z+dz*t-iz)*4;
-  let cx=Math.min(3,Math.max(0,Math.floor(px))), cy=Math.min(3,Math.max(0,Math.floor(py))), cz=Math.min(3,Math.max(0,Math.floor(pz)));
-  const sx=dx<0?-1:1, sy=dy<0?-1:1, sz=dz<0?-1:1;
-  const ax=dx===0?Infinity:Math.abs(.25/dx), ay=dy===0?Infinity:Math.abs(.25/dy), az=dz===0?Infinity:Math.abs(.25/dz);
+// sandbags (8 sub-voxels per cell): courses half a cell high, bags 3/4 of a cell long, laid staggered,
+// each one pinched at the ends and rounded along the top
+function sandbagRun(ix,iy,iz) { return tile(ix-1,iy,iz)===8 || tile(ix+1,iy,iz)===8 || !(tile(ix,iy,iz-1)===8 || tile(ix,iy,iz+1)===8); }
+function sandbagOcc(ix,iy,iz,sx,sy,sz) {
+  const runX=sandbagRun(ix,iy,iz);
+  const along=runX?ix*8+sx:iz*8+sz, across=runX?sz:sx;
+  const ly=iy*8+sy, cy=ly&3, e=(along+((ly>>2)&1)*3)%6, end=Math.min(e,5-e);
+  const edge=across===0 || across===7;
+  if (cy===3 && (end===0 || edge)) return false;
+  if (end===0 && edge) return false;
+  return true;
+}
+function drumOcc(ix,iy,iz,sx,sy,sz) {
+  const r=(sx-3.5)**2+(sz-3.5)**2;
+  if (r>14.5) return false;
+  const ly=iy*8+sy, top=tile(ix,iy+1,iz)!==9;
+  return !(top && sy===7 && r<8);                         // recessed lid inside the rim
+}
+function barsOcc(ix,iy,iz,sx,sy,sz) {
+  const runX=tile(ix-1,iy,iz)===11 || tile(ix+1,iy,iz)===11;
+  const along=runX?sx:sz, across=runX?sz:sx;
+  if (across!==1 && across!==2) return false;
+  const ly=iy*4+sy;
+  return along===1 || along===3 || ly===6 || ly===15;     // two bars per cell, two cross rails
+}
+function shapeOcc(m,ix,iy,iz,sx,sy,sz) {
+  return m===7?rubbleOcc(ix,iy,iz,sx,sy,sz):m===8?sandbagOcc(ix,iy,iz,sx,sy,sz):m===9?drumOcc(ix,iy,iz,sx,sy,sz):barsOcc(ix,iy,iz,sx,sy,sz);
+}
+function shapeTint(m,ix,iy,iz,cx,cy,cz) {
+  if (m===7) return .68+(h3(ix*4+cx,iy*4+cy,iz*4+cz)>>>4&15)/15*.5;       // each chunk its own shade
+  if (m===8) {
+    const runX=sandbagRun(ix,iy,iz);
+    const ly=iy*8+cy, p=(runX?ix*8+cx:iz*8+cz)+((ly>>2)&1)*3, e=p%6, end=Math.min(e,5-e);
+    // each bag its own shade, bellied out in the middle, tucked in at the seams, darker underneath
+    return (.8+(h3(Math.floor(p/6),ly>>2,runX?iz:ix)&15)/15*.28)*[.72,.92,1.06,1.12][ly&3]*(end===0?.78:end===1?.95:1.05);
+  }
+  if (m===9) return .78+(h3(ix,0,iz)&15)/15*.4;
+  return 1;
+}
+function shapeTrace(m,ix,iy,iz,x,y,z,dx,dy,dz,t,side,out) {
+  const N=SHAPE[m];
+  const px=(x+dx*t-ix)*N, py=(y+dy*t-iy)*N, pz=(z+dz*t-iz)*N;
+  let cx=Math.min(N-1,Math.max(0,Math.floor(px))), cy=Math.min(N-1,Math.max(0,Math.floor(py))), cz=Math.min(N-1,Math.max(0,Math.floor(pz)));
+  const sx=dx<0?-1:1, sy=dy<0?-1:1, sz=dz<0?-1:1, s=1/N;
+  const ax=dx===0?Infinity:Math.abs(s/dx), ay=dy===0?Infinity:Math.abs(s/dy), az=dz===0?Infinity:Math.abs(s/dz);
   let tx=dx===0?Infinity:t+(sx>0?cx+1-px:px-cx)*ax;
   let ty=dy===0?Infinity:t+(sy>0?cy+1-py:py-cy)*ay;
   let tz=dz===0?Infinity:t+(sz>0?cz+1-pz:pz-cz)*az;
   let tc=t;
-  for (let n=0;n<12;n++) {
-    if (rubbleOcc(ix,iy,iz,cx,cy,cz)) {
-      out.t=tc; out.side=side;
-      out.tint=.68+(h3(ix*4+cx,iy*4+cy,iz*4+cz)>>>4&15)/15*.5;   // each chunk its own shade
+  for (let n=0;n<3*N;n++) {
+    if (shapeOcc(m,ix,iy,iz,cx,cy,cz)) {
+      out.t=tc; out.side=side; out.tint=shapeTint(m,ix,iy,iz,cx,cy,cz);
       return true;
     }
     if (tx<ty && tx<tz) { tc=tx; tx+=ax; cx+=sx; side=0; }
     else if (ty<tz) { tc=ty; ty+=ay; cy+=sy; side=1; }
     else { tc=tz; tz+=az; cz+=sz; side=2; }
-    if (cx<0||cy<0||cz<0||cx>3||cy>3||cz>3) return false;
+    if (cx<0||cy<0||cz<0||cx>=N||cy>=N||cz>=N) return false;
   }
   return false;
 }
@@ -289,6 +605,7 @@ function shoot() {
   if (phase!=="playing" || cooldown || reload || charge?.plant > 0) return;
   if (!magazine) { reloadRifle(); return; }
   magazine--; cooldown=.21; flash=.075;
+  vmSmoke.push({born:lastClock+.05,x:28,dx:(Math.random()-.5)*1.2}); if (vmSmoke.length>8) vmSmoke.shift();
   tone(190,.14,.13,"sawtooth",33);
   makeNoise(player.x,player.z,NOISE.gun,"gun");
   const [dx,dy,dz]=direction();
@@ -308,7 +625,7 @@ function shoot() {
     say(target.hp ? "HIT" : "HOSTILE DOWN");
     if (target.hp) { target.yaw=Math.atan2(player.x-target.x,player.z-target.z); raiseTo(EVASION,player.x,player.z); }
   } else if (material===2 || material===7) {
-    world[index(hit.x,hit.y,hit.z)]=0;
+    world[index(hit.x,hit.y,hit.z)]=0; markDirty(hit.x,hit.y,hit.z);
     if (material===2) run.blocks++;
     integrityTimer=integrityTimer||.05;
     const x=player.x+dx*(hit.t-.04), y=player.eye+dy*(hit.t-.04);
@@ -317,18 +634,33 @@ function shoot() {
       particles.push({x,y,z,vx:(Math.random()-.5)*3-dx*2,
         vy:Math.random()*3,vz:(Math.random()-.5)*3-dz*2,life:.18+Math.random()*.24,shade:Math.random()});
     }
+    impactFx(x,y,z,dx,dy,dz,3,true);
+  } else if (material) {
+    // steel, reinforced concrete, crates, drums, sandbags: the round stops and leaves a mark
+    const x=player.x+dx*hit.t, y=player.eye+dy*hit.t, z=player.z+dz*hit.t;
+    addDecal(hit.x,hit.y,hit.z,x,y,z,.075);
+    impactFx(x-dx*.04,y-dy*.04,z-dz*.04,dx,dy,dz,material===8?0:5,material!==8);
   }
 }
+// sparks off hard surfaces, and a puff of grit
+function impactFx(x,y,z,dx,dy,dz,sparks,grit) {
+  for (let n=0;n<sparks;n++) particles.push({x,y,z,vx:(Math.random()-.5)*5-dx*3,vy:Math.random()*3.5,vz:(Math.random()-.5)*5-dz*3,
+    life:.08+Math.random()*.16,shade:Math.random(),spark:true});
+  if (grit) particles.push({x,y,z,vx:-dx*.6,vy:.25,vz:-dz*.6,life:.6,dust:true,size:.5});
+}
 
-// Only concrete is excavated. Collision and line of sight read the same grid.
+const breachable=m=>m===2||m===10||m===11;
+// Concrete, rubble, sandbags, drums and bars are blown out; reinforced concrete only cracks. Collision and line of sight read the same grid.
 function carve(cx,cy,cz,radius,onRemove=()=>{}) {
   let removed=0;
   for (let y=Math.floor(cy-radius);y<=cy+radius;y++)
     for (let z=Math.floor(cz-radius);z<=cz+radius;z++)
       for (let x=Math.floor(cx-radius);x<=cx+radius;x++) {
         const m=tile(x,y,z);
-        if (m!==2 && m!==7) continue;
+        if (m!==2 && m!==7 && m!==8 && m!==9 && m!==10 && m!==11) continue;
         if ((x+.5-cx)**2+(y+.5-cy)**2+(z+.5-cz)**2>radius**2) continue;
+        markDirty(x,y,z);
+        if (m===10) { world[index(x,y,z)]=2; continue; }   // reinforced concrete cracks; a second charge finishes it
         world[index(x,y,z)]=0;
         removed++; if (m===2) run.blocks++;
         onRemove(x+.5,y+.5,z+.5);
@@ -336,12 +668,19 @@ function carve(cx,cy,cz,radius,onRemove=()=>{}) {
   if (removed) integrityTimer=integrityTimer||.05;
   return removed;
 }
+function countMaterial(m,cx,cy,cz,r) {
+  let n=0;
+  for (let y=Math.floor(cy-r);y<=cy+r;y++) for (let z=Math.floor(cz-r);z<=cz+r;z++) for (let x=Math.floor(cx-r);x<=cx+r;x++)
+    if (tile(x,y,z)===m) n++;
+  return n;
+}
 function breach() {
   if (charge) return;
   if (!charges) { say("NO BREACH CHARGES"); return; }
   const [dx,dy,dz]=direction();
-  if (trace(player.x,player.eye,player.z,dx,dy,dz,plantRange,hit)!==2) {
-    say("MOVE CLOSE AND AIM AT CRACKED CONCRETE"); return;
+  const m=trace(player.x,player.eye,player.z,dx,dy,dz,plantRange,hit);
+  if (!breachable(m)) {
+    say(m===3?"OUTER WALL IS TOO THICK · AIM AT AN INNER WALL":"MOVE CLOSE AND AIM AT A WALL OR GATE"); return;
   }
   const x=player.x+dx*hit.t, y=player.eye+dy*hit.t, z=player.z+dz*hit.t;
   charge={x,y,z,dx,dz,plant:plantTime,fuse:fuseTime};
@@ -370,6 +709,7 @@ function updateCharge(dt) {
   const {x,y,z,dx,dz}=charge;
   charge=null;
   const cx=x+dx*1.7, cy=y-.4, cz=z+dz*1.7;
+  const before=countMaterial(10,cx,cy,cz,3.7);
   const removed=carve(cx,cy,cz,3.7,(x,y,z)=>{
     if (Math.random()<.28) particles.push({x,y,z,vx:(Math.random()-.5)*7,
       vy:Math.random()*5,vz:(Math.random()-.5)*7,life:.45+Math.random()*.5,shade:Math.random()});
@@ -399,9 +739,20 @@ function updateCharge(dt) {
     particles.push({x:x-dx*.35,y,z:z-dz*.35,vx:(Math.random()-.5)*3-dx*1.6,
       vy:Math.random()*1.8,vz:(Math.random()-.5)*3-dz*1.6,life:.95+Math.random()*.65,dust:true});
   }
+  // a dark column of smoke that hangs around and drifts up, and a scorch mark on everything nearby
+  for (let n=0; n<14; n++) {
+    const life=3+Math.random()*3;
+    particles.push({x:x-dx*(.6+Math.random()),y:y+Math.random(),z:z-dz*(.6+Math.random()),
+      vx:(Math.random()-.5)*.9-dx*.5,vy:.35+Math.random()*.5,vz:(Math.random()-.5)*.9-dz*.5,life,max:life,smoke:true,shade:Math.random()});
+  }
+  for (let n=0; n<16; n++) particles.push({x:x-dx*.3,y,z:z-dz*.3,vx:(Math.random()-.5)*9-dx*3,vy:Math.random()*6,
+    vz:(Math.random()-.5)*9-dz*3,life:.2+Math.random()*.35,shade:Math.random(),spark:true});
+  scorches.push({x:cx-dx*1.2,y:cy,z:cz-dz*1.2,r:3.4});
+  if (scorches.length>12) scorches.shift();
 
   tone(95,.45,.25,"sawtooth",24);
-  say(removed+" CONCRETE CELLS CLEARED");
+  const cracked=before-countMaterial(10,cx,cy,cz,3.7);
+  say(cracked && !removed?"REINFORCED WALL CRACKED · ONE MORE CHARGE":removed+" CONCRETE CELLS CLEARED");
 }
 
 // ===== Scoring =====
@@ -597,7 +948,9 @@ function update(dt,clock) {
   }
   if (hasIntel && Math.hypot(player.x-extraction.x,player.z-extraction.z)<2.6) finish(true);
   for (const p of particles) {
-    p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.vy-=(p.dust?.25:12)*dt; p.life-=dt;
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.life-=dt;
+    if (p.smoke) { p.vx*=1-dt*.6; p.vz*=1-dt*.6; p.vy=Math.max(.15,p.vy-dt*.05); }
+    else p.vy-=(p.dust?.25:12)*dt;
   }
   particles=particles.filter(p=>p.life>0 && p.y>1);
   for (const b of bullets) {
@@ -611,6 +964,8 @@ function update(dt,clock) {
         if (!player.hp) { finish(false); return; }
       } else if (tile(Math.floor(b.x),Math.floor(b.y),Math.floor(b.z))) {
         b.life=0;
+        const m=tile(Math.floor(b.x),Math.floor(b.y),Math.floor(b.z));
+        if (!SHAPE[m]) addDecal(Math.floor(b.x),Math.floor(b.y),Math.floor(b.z),b.x,b.y,b.z,.07);
         for (let n=0;n<6;n++) particles.push({x:b.x-b.vx*.01,y:b.y,z:b.z-b.vz*.01,
           vx:(Math.random()-.5)*4-b.vx*.08,vy:Math.random()*3,vz:(Math.random()-.5)*4-b.vz*.08,
           life:.12+Math.random()*.18,shade:Math.random(),spark:true});
@@ -627,7 +982,7 @@ function update(dt,clock) {
 // Support distance: resting on an anchor = 0; resting on a dynamic voxel inherits its distance;
 // each step sideways (or hanging from above) costs 1. Anything farther than SPAN from support
 // is overstressed and collapses after a short creak. Recomputed only when the grid changes.
-const isDyn=m=>m===2||m===7, isAnchor=m=>m===1||m===3||m===6;
+const isDyn=m=>m===2||m===7, isAnchor=m=>m===1||m===3||m===6||m>=8;
 let support=null;
 function checkIntegrity() {
   if (!support) support=new Int16Array(X*Y*Z);
@@ -671,6 +1026,7 @@ function updateStructure(dt) {
     pending.delete(i);
     if (!isDyn(world[i])) continue;
     const m=world[i]; world[i]=0; dropped++;
+    markDirty(i%X,Math.floor(i/(X*Z)),Math.floor(i/X)%Z);
     if (m===2) run.blocks++;
     const x=i%X, z=Math.floor(i/X)%Z, y=Math.floor(i/(X*Z));
     fallers.push({x:x+.5,y:y+.5,z:z+.5,vx:(Math.random()-.5)*.6,vy:-Math.random()*.5,vz:(Math.random()-.5)*.6,m,tint:.8+Math.random()*.35,spin:(Math.random()-.5)*8});
@@ -696,7 +1052,7 @@ function updateStructure(dt) {
       f.dead=true;
       const cell=below+1;
       const clear=Math.hypot(f.x-player.x,f.z-player.z)>1.1 && guards.every(g=>!g.hp || Math.hypot(f.x-g.x,f.z-g.z)>1);
-      if (Math.random()<.45 && clear && !tile(fx,cell,fz) && cell<Y) { world[index(fx,cell,fz)]=7; integrityTimer=integrityTimer||.06; }
+      if (Math.random()<.45 && clear && !tile(fx,cell,fz) && cell<Y) { world[index(fx,cell,fz)]=7; markDirty(fx,cell,fz); integrityTimer=integrityTimer||.06; }
       burst(fx+.5,cell,fz+.5,3);
       if (thudCD<=0) { tone(90+Math.random()*40,.12,.06,"triangle",40); thudCD=.07; }
     }
@@ -712,7 +1068,7 @@ function kickRubble(x,z) {
   let k=0;
   for (let iz=Math.floor(z-.45);iz<=Math.floor(z+.45);iz++)
     for (let ix=Math.floor(x-.45);ix<=Math.floor(x+.45);ix++)
-      for (let iy=1;iy<=2;iy++) if (tile(ix,iy,iz)===7) { world[index(ix,iy,iz)]=0; k++; burst(ix+.5,iy+.5,iz+.5,2); }
+      for (let iy=1;iy<=2;iy++) if (tile(ix,iy,iz)===7) { world[index(ix,iy,iz)]=0; markDirty(ix,iy,iz); k++; burst(ix+.5,iy+.5,iz+.5,2); }
   if (k) integrityTimer=integrityTimer||.05;
 }
 
@@ -772,11 +1128,12 @@ const alertEl=document.querySelector("#alertbar");
 
 function makeGuard(x,z,cell,yaw) {
   return {x,z,cell,yaw,hp:2,gait:0,pace:0,impact:0,fall:0,shot:1.5,aim:0,spot:0,muzzle:0,query:0,saw:false,
-    task:"idle",wait:1+Math.random()*3,goal:null,field:null};
+    task:"idle",wait:1+Math.random()*3,goal:null,field:null,look:Math.random()};
 }
 function canSee(g,dx,dz,dist,crouched) {
   const P=PHASE[alertLevel];
-  const range=P.range*(crouched && alertLevel<ALERT?.62:1);
+  // sentries at a post watch a long sight line; crouching still helps
+  const range=P.range*(crouched && alertLevel<ALERT?.62:1)*(g.post && g.task==="post"?1.3:1);
   if (dist>range || dist<.01) return false;
   const facing=Math.cos(Math.atan2(dx,dz)-g.yaw);
   if (facing<P.fov && dist>2.2) return false;
@@ -898,6 +1255,16 @@ function thinkGuard(g,dt,sees,heading,dist) {
     g.yaw+=dt*2.2;   // reached the last known spot: scan
     return;
   }
+  if (g.post && alertLevel===UNDETECTED) {
+    // sentry: walk back to the post if pulled away, then slowly sweep the arc in front of it
+    if (Math.hypot(g.x-g.post.x,g.z-g.post.z)>1) {
+      g.postField??=flowField(g.post.x,g.post.z);
+      if (!followField(g,g.postField,P.speed,dt,0)) return;
+    }
+    g.task="post"; g.scan=(g.scan||0)+dt;
+    g.yaw=g.post.yaw+Math.sin(g.scan*.45)*.85;
+    return;
+  }
   if (g.task==="investigate" && g.field) {
     if (!followField(g,g.field,P.speed+.6,dt)) return;
     g.task="search"; g.wait=alertLevel===EVASION?2:4+Math.random()*2; g.field=null;
@@ -933,68 +1300,130 @@ function fireBullet(guard,dist,crouched) {
 let depth = new Float32Array(width*height);
 const ray = {};
 const focal = height*145/126;   // tied to height so wide screens see more, not zoom in
-const faceLight = [.72,1,.87];
 const dustColor=[156,130,101], rubbleColor=[190,152,104];
 const groundFog=[54,69,71];
 let textures;
 const textureSize = 64;
 
-// Generate repeating material maps once. Coordinates are tied to world faces.
-function buildTextures() { return colors.map((base,id)=>{
-  const data = new Uint8Array(textureSize*textureSize*3);
-  for (let y=0; y<64; y++) {
-    for (let x=0; x<64; x++) {
-      const grit=((Math.imul(x+17,73856093)^Math.imul(y+41,19349663))>>>3)&31;
-      const seam=x===0 || y===0;
-      const mottling=((Math.imul((x>>3)+19,362827313)^Math.imul((y>>3)+47,1376312589))>>>11)&15;
-      let tint=base, shade=(grit-15)*.65+mottling-7;
-      if (id===2) {
-        // A stepped fracture with a branching hairline and chipped lip.
-        const fracture=34-y*.2+[0,4,1,6,3,-2,0,4][y>>3];
-        const crack=x-fracture;
-        const branch=y>24 && y<52 && Math.abs(x-(fracture+(y-24)*.68))<1;
-        if (Math.abs(crack)<1.6 || branch) shade-=76;
-        else if (crack>=1.6 && crack<3) shade+=27;
-        if (y>54 && y<63) {
-          tint=((x+y)>>3)&1?palette.stripe:palette.stripeDark;
-          shade*=.65;
-        }
-        if (x<2 || y<2) shade-=24;
-        if (x===2 || y===2) shade+=13;
-        if (grit<4) shade-=14;
+// ===== TEXTURES (pure; godot/tools/asset-export.js runs this block on its own) =====
+// 64x64 material maps, 16 texels per voxel, so each tile spans 4x4 voxels. Large-scale detail
+// (stains, seams, cracks, stripes, pipes) is added in world space while rendering, so walls don't repeat.
+function buildTextures() {
+  const hash=(x,y,s)=>((Math.imul(x+s*31,73856093)^Math.imul(y+s*17,19349663)^Math.imul(s,83492791))>>>0)/4294967296;
+  // tileable value noise: cell size c texels, wraps at 64
+  const vnoise=(x,y,c,s)=>{
+    const n=64/c, gx=x/c, gy=y/c, x0=Math.floor(gx), y0=Math.floor(gy), fx=gx-x0, fy=gy-y0;
+    const sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
+    const v=(i,j)=>hash(((i%n)+n)%n,((j%n)+n)%n,s+c);
+    return (v(x0,y0)*(1-sx)+v(x0+1,y0)*sx)*(1-sy)+(v(x0,y0+1)*(1-sx)+v(x0+1,y0+1)*sx)*sy;
+  };
+  const fbm=(x,y,s)=>vnoise(x,y,32,s)*.45+vnoise(x,y,16,s)*.3+vnoise(x,y,8,s)*.15+vnoise(x,y,4,s)*.1;
+  const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+  const rust=[118,64,38], rustDk=[72,40,26];
+  return colors.map((base,id)=>{
+    const data=new Uint8Array(textureSize*textureSize*3);
+    for (let y=0;y<64;y++) for (let x=0;x<64;x++) {
+      const n=fbm(x,y,id), fine=hash(x,y,id+50), k0=.82+.3*n;
+      let c=base.map(v=>v*k0);
+      if (id===1) {
+        // poured slab: trowel swirl, pits, a saw-cut joint every 4 voxels, scuffs
+        c=base.map(v=>v*(.86+.24*n+(fine-.5)*.1));
+        if (fine<.05) c=c.map(v=>v*.72);
+        if (x===0 || y===0) c=c.map(v=>v*.62); else if (x===1 || y===1) c=c.map(v=>v*1.06);
+        if (Math.abs(((x*.7+y*.3+vnoise(x,y,16,9)*20)%23)-11)<.6 && vnoise(x,y,8,5)>.55) c=c.map(v=>v*.88);
+      } else if (id===2 || id===7) {
+        // cast concrete: cloudy curing marks, air pockets, aggregate speckle
+        const blot=vnoise(x,y,8,31)*.5+vnoise(x,y,4,32)*.5;
+        c=base.map(v=>v*(.84+.2*n+(blot-.5)*.08+(fine-.5)*.1));
+        if (fine<.035) c=c.map(v=>v*.58); else if (fine>.97) c=c.map(v=>v*1.13);
+        if (id===7) { c=c.map(v=>v*(.85+fine*.3)); if (fine<.12) c=c.map(v=>v*.7); }
       } else if (id===3) {
-        if (x<3 || y<3) shade-=24;
-        if (x===3 || y===3) shade+=20;
-        if ((x<9 || x>55) && (y<9 || y>55) && (x+y)%5<2) shade+=23;
-      } else if (id===7) {
-        // crushed concrete grain; the chunk shapes come from the sub-voxel heap
-        shade=(grit-15)*1.1+mottling*.6-6;
-        if (grit<5) shade-=26;
-        if (((x*7+y*13)&31)===0) tint=base.map(c=>c*1.25);
-      } else if (id===6) {
-        // Steel-banded supply crate, one panel per voxel face.
-        const lx=x&15, ly=y&15;
-        tint=[72,80,62];
-        shade=(grit-15)*.35+((ly>>1)%2?-4:3);
-        if (lx<2 || lx>13 || ly<2 || ly>13) { tint=[118,122,104]; shade+=lx===0||ly===0?-30:8; }
-        else if (Math.abs(lx-ly)<1.2 || Math.abs(lx-(15-ly))<1.2) shade+=14;
-        if (ly>5 && ly<9 && lx>4 && lx<11) tint=[214,170,72];
-      } else if (id===1) {
-        if (seam) shade-=19;
-        if (grit<3) shade-=15;
+        // corrugated steel cladding with rust blooms
+        const wave=Math.sin(x/8*Math.PI*2);
+        c=base.map(v=>v*(.78+.18*wave+.12*n));
+        const r=vnoise(x,y,16,21)*.7+vnoise(x,y,4,22)*.3;
+        if (r>.56) c=mix(c,r>.66?rustDk:rust,Math.min(1,(r-.56)*5)*.85);
+        if (wave>.92) c=c.map(v=>v*1.12);
+        if (x===0 && (y&15)===8) c=[200,196,180];
       } else if (id===4) {
-        tint=x<5 || x>58 || y<5 || y>58?[111,217,151]:[36,114,83];
-        if ((x+y)%12<2) shade+=13;
-      } else if (id===5) {
-        if (x<5 || y<5 || x>58 || y>58) shade-=48;
-        if (y>17 && y<25 && (x<13 || x>50)) tint=[56,58,46];
+        // non-slip green deck paint, worn to grey at the grit
+        c=[36,114,83].map(v=>v*(.84+.26*n));
+        if (fine<.12) c=mix(c,[120,124,110],.5);
+      } else if (id===6) {
+        // olive ammo crate: planks, darker frame, rope handle, stencilled band
+        const lx=x&15, ly=y&15;
+        c=base.map(v=>v*(.88+.15*n+(hash(lx>>2,y>>4,4)-.5)*.1));
+        if ((ly&3)===0) c=c.map(v=>v*.82);
+        if (lx<2 || lx>13 || ly<2 || ly>13) c=base.map(v=>v*(lx===0||ly===0?.55:.75));
+        if (ly>=6 && ly<=8 && lx>=4 && lx<=11 && ((lx+ly*3)%4!==0)) c=[196,168,74];
+        if (ly===11 && lx>5 && lx<10) c=[120,100,66];
+        if (fine<.06) c=c.map(v=>v*.8);
+      } else if (id===8) {
+        // burlap weave
+        const weave=((x+(y>>1))&1)?1.06:.92;
+        c=base.map(v=>v*weave*(.85+.25*n));
+        if (fine<.08) c=c.map(v=>v*.82);
+      } else if (id===9) {
+        // painted steel drum: two rolling hoops, chipped paint, rust at the rims
+        const ly=y&31, hoop=ly===7||ly===8||ly===23||ly===24;
+        c=base.map(v=>v*(.86+.2*n)*(hoop?(ly&1?.7:1.2):1));
+        if (ly<2 || ly>29) c=mix(c,rust,.6);
+        if (vnoise(x,y,8,40)>.7) c=mix(c,rust,.7);
+        if (ly>12 && ly<19 && (x&15)>3 && (x&15)<12) c=palette.stripe.map(v=>v*.85);
+      } else if (id===10) {
+        // reinforced concrete: smooth panels, steel edge bands and anchor bolts
+        const lx=x&31, ly=y&31;
+        c=base.map(v=>v*(.9+.14*n+(fine-.5)*.05));
+        if (lx===0 || ly===0) c=c.map(v=>v*.6); else if (lx===1 || ly===1) c=c.map(v=>v*1.1);
+        const bx=Math.min(Math.abs(lx-4),Math.abs(lx-27)), by=Math.min(Math.abs(ly-4),Math.abs(ly-27));
+        if (bx<=1 && by<=1) c=bx+by===0?[176,178,180]:[70,72,74];
+        else if (bx===0 && ly>5 && ly<10 && vnoise(x,y,4,12)>.6) c=mix(c,rust,.2);
+      } else if (id===11) {
+        c=base.map(v=>v*(.8+.4*n));
+        if (vnoise(x,y,8,60)>.6) c=mix(c,rust,.6);
+      } else if (id===12) {
+        // asphalt with gravel showing through, patched in places
+        c=base.map(v=>v*(.85+.22*n));
+        if (fine>.9) c=c.map(v=>v*1.45); else if (fine<.1) c=c.map(v=>v*.75);
+        if (vnoise(x,y,32,70)>.68) c=c.map(v=>v*.85);
+      } else if (id===13) {
+        // painted truck panels: seams, rivets, faded paint
+        const lx=x&15, ly=y&15;
+        c=base.map(v=>v*(.86+.2*n));
+        if (lx===0) c=c.map(v=>v*.6);
+        if (ly===2 && (lx&3)===2) c=c.map(v=>v*1.3);
+        if (fine<.05) c=c.map(v=>v*.82);
+      } else if (id===14) {
+        c=base.map(v=>v*(.75+.4*n));
+        if (fine>.97) c=[90,96,100];
       }
-      const offset=(y*64+x)*3;
-      for (let c=0;c<3;c++) data[offset+c]=Math.min(255,Math.max(0,tint[c]+shade));
+      const o=(y*64+x)*3;
+      for (let i=0;i<3;i++) data[o+i]=Math.min(255,Math.max(0,c[i]));
     }
-  }
-  return data;
-}); }
+    return data;
+  });
+}
+// ===== END TEXTURES =====
+// Crack overlay: a few jagged fractures drawn once, then scattered over wall blocks in world space.
+// 0 = clean, 1 = crack, 2 = chipped lip beside it.
+const crackMask=(()=>{
+  const m=new Uint8Array(64*64);
+  let s=7;
+  const rnd=()=>{ s=(Math.imul(s,1103515245)+12345)>>>0; return s/4294967296; };
+  const walk=(x,y,dx,dy,len,branch)=>{
+    for (let i=0;i<len;i++) {
+      x+=dx+(rnd()-.5)*1.4; y+=dy+(rnd()-.5)*.6;
+      const ix=Math.round(x), iy=Math.round(y);
+      if (ix<1 || iy<1 || ix>62 || iy>62) return;
+      m[iy*64+ix]=1;
+      if (rnd()<.5) m[iy*64+ix+1]=1;
+      if (!m[iy*64+ix-1]) m[iy*64+ix-1]=2;
+      if (branch && rnd()<.06) walk(x,y,dx*.4+(rnd()<.5?-.8:.8),dy,8+rnd()*14,false);
+    }
+  };
+  walk(30,2,.15,1,60,true); walk(10,40,.9,.5,26,true); walk(52,20,-.3,1,26,false);
+  return m;
+})();
 
 function guardView(guard) {
   const bearing=Math.atan2(player.x-guard.x,player.z-guard.z);
@@ -1009,9 +1438,19 @@ function guardView(guard) {
 const G={helmet:[84,94,68],helmetHi:[118,128,92],strap:[38,40,34],skin:[190,140,100],skinDk:[150,104,72],
   mask:[50,54,48],lens:[28,58,66],lensHi:[150,215,220],shirt:[98,106,78],shirtDk:[76,83,60],vest:[64,72,54],
   pouch:[78,86,64],pouchDk:[44,50,38],belt:[42,40,34],buckle:[150,146,120],pants:[86,92,68],pantsDk:[66,72,52],
-  pad:[44,48,40],boot:[34,32,28],gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
+  pad:[44,48,40],boot:[78,64,46],bootHi:[104,86,62],webbing:[48,54,40],gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
 function ellipse(u,v,cu,cv,ru,rv){return ((u-cu)/ru)**2+((v-cv)/rv)**2<1;}
-function guardPixel(view,u,v,firing,step,aim=0) {
+// fabric: a four-colour woodland-style camouflage with fold shading; skin tones vary per soldier
+const CAMO=[[104,106,78],[80,86,60],[116,100,74],[52,56,42]];
+function fab(u,v,look,k) {
+  const a=Math.sin(u*31+look*9+Math.sin(v*17)*1.5)+Math.sin(v*23-u*7+look*5), b=Math.sin(u*13-v*29+look*3);
+  const c=a>1.15?CAMO[3]:a>.4?CAMO[1]:b>.6?CAMO[2]:CAMO[0];
+  const fold=1-.13*Math.max(0,Math.sin(v*64+u*14+look*4))**3;
+  return [c[0]*k*fold,c[1]*k*fold,c[2]*k*fold];
+}
+const SKINS=[[198,150,110],[172,122,86],[134,92,62],[96,66,46]];
+function skin(look,k) { const c=SKINS[Math.floor(look*4)%4]; return [c[0]*k,c[1]*k,c[2]*k]; }
+function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
   if (u<0 || u>1 || v<0 || v>1) return;
   const side=view==="left" || view==="right";
   const h=view==="left"?1-u:u;   // in side view h grows toward where the guard faces
@@ -1023,13 +1462,13 @@ function guardPixel(view,u,v,firing,step,aim=0) {
     for (let k=0;k<2;k++) {
       const d=Math.abs(h-legs[k]);
       if (d<(v>.9?.085:.072)) {
-        if (v>.91) return v>.975?[20,19,17]:G.boot;
+        if (v>.91) return v>.972?[24,22,20]:v<.93?G.bootHi:G.boot;
         if (v>.71 && v<.77) return G.pad;
         const dk=side?k===0:k===1;
-        return d>.05?G.pantsDk:dk?G.pantsDk:G.pants;
+        return d>.05?fab(u,v+.37,look,.76):dk?fab(u,v+.37,look,.76):fab(u,v+.37,look,1);
       }
     }
-    if (v<.6 && (side?Math.abs(h-.48)<.12:c<.17)) return G.pants;
+    if (v<.6 && (side?Math.abs(h-.48)<.12:c<.17)) return fab(u,v+.37,look,1);
     return;
   }
   if (side) {
@@ -1040,14 +1479,14 @@ function guardPixel(view,u,v,firing,step,aim=0) {
     }
     if (h>.5 && h<.6 && v>rv && v<rv+.08) return G.gun; // magazine
     // arm
-    if (aim>0 ? (h>.47 && h<.66 && v>.24 && v<.34) : (h>.47 && h<.64 && v>.24 && v<.43 && (v-.24)*.9>(h-.5)*.6-.02)) return h<.52?G.shirtDk:G.shirt;
-    if (v<.1 && ellipse(h,v,.53,.075,.12,.072)) return v<.04?G.helmetHi:G.helmet;
+    if (aim>0 ? (h>.47 && h<.66 && v>.24 && v<.34) : (h>.47 && h<.64 && v>.24 && v<.43 && (v-.24)*.9>(h-.5)*.6-.02)) return h<.52?fab(u,v,look,.76):fab(u,v,look,1);
+    if (v<.1 && ellipse(h,v,.53,.075,.12,.072)) return v<.04?G.helmetHi:fab(h,v,look,.82);
     if (v>=.095 && v<.108 && h>.42 && h<.67) return G.strap;
     if (v>=.108 && v<.205 && h>.44 && h<.63+(v>.14 && v<.165?.02:0)) {   // profile with nose
-      if (h<.49) return G.skinDk;
+      if (h<.49) return skin(look,.8);
       if (h>.54 && h<.57 && v<.142 && v>.118) return v<.125?[58,42,30]:(aim>0||firing?[150,20,16]:[26,24,22]);
       if (h>.58 && v>.176 && v<.184) return [104,52,44];
-      return h>.6?[206,156,116]:G.skin;
+      return h>.6?skin(look,1.1):skin(look,1);
     }
     if (v>.2 && v<.56) {
       if (h>.3 && h<.4 && v>.23 && v<.48) return h<.33?G.pouchDk:G.pouch; // pack
@@ -1064,23 +1503,23 @@ function guardPixel(view,u,v,firing,step,aim=0) {
     if (view==="front" && v>.045 && v<.075 && c<.1) // goggles pushed up on the helmet
       return c<.012?G.strap:c<.085?(v<.053 && c>.03 && c<.05?G.lensHi:G.lens):G.strap;
     if (v<.035 && c<.08) return G.helmetHi;
-    return G.helmet;
+    return fab(u,v,look,.82);   // cloth helmet cover
   }
   if (v>=.095 && v<.108 && c<.13) return G.strap;  // brim
   const jaw=.088-Math.max(0,v-.17)*1.4;
   if (v>=.108 && v<.205 && c<jaw) {
-    if (view==="back") return v<.13?G.strap:G.skinDk;
-    if (c>jaw-.012) return v<.16?G.strap:G.skinDk;        // chin strap / cheek shadow
+    if (view==="back") return v<.13?G.strap:skin(look,.8);
+    if (c>jaw-.012) return v<.16?G.strap:skin(look,.8);        // chin strap / cheek shadow
     const angry=aim>0 || firing;
     if (v>.118 && v<.128 && c>.016 && c<.068 && (!angry || v-.118>(.068-c)*.18)) return [58,42,30]; // brows
     if (v>.13 && v<.146 && c>.022 && c<.064) {                // eyes
       if (c>.036 && c<.05) return angry?[150,20,16]:[26,24,22];
       return [232,226,212];
     }
-    if (v>.14 && v<.168 && c<.011) return v>.16?G.skinDk:[206,156,116]; // nose
+    if (v>.14 && v<.168 && c<.011) return v>.16?skin(look,.8):skin(look,1.1); // nose
     if (v>.176 && v<.184 && c<.032) return [104,52,44];       // mouth
-    if (v>.186 && c<.05) return [172,124,88];                 // chin
-    return c>.06?G.skinDk:G.skin;
+    if (v>.186 && c<.05) return skin(look,.9);                 // chin
+    return c>.06?skin(look,.8):skin(look,1);
   }
   if (v>.195 && v<.22 && c<.06) return G.mask;
   // shoulders + torso
@@ -1091,29 +1530,31 @@ function guardPixel(view,u,v,firing,step,aim=0) {
       const du=u-.6, dvv=v-.3;
       if (du*du/.0036+dvv*dvv/.0025<1) return du*du/.0009+dvv*dvv/.0006<1?[8,8,8]:G.gun; // muzzle at you
       if (u>.55 && u<.72 && v>.27 && v<.36) return G.gun;
-      if (arm) return v<.36?(u<.5?G.shirt:G.shirtDk):(u<.5?G.shirt:G.shirtDk);
-      if (u>.36 && u<.56 && v>.28 && v<.34) return G.skinDk;   // support hand
+      if (arm) return v<.36?(u<.5?fab(u,v,look,1):fab(u,v,look,.76)):(u<.5?fab(u,v,look,1):fab(u,v,look,.76));
+      if (u>.36 && u<.56 && v>.28 && v<.34) return skin(look,.8);   // support hand
     }
     if (view==="front") {
       // rifle across chest
       const rv=.42+(u-.5)*.12;
-      if (!aim && u>.16 && u<.86 && Math.abs(v-rv)<.022) {
+      if (!aim && u>.16 && u<.86 && Math.abs(v-rv)<(u<.27?.034:.022)) {      // stock end is thicker
         return v<rv-.01?G.gunHi:G.gun;
       }
+      if (!aim && u>.47 && u<.54 && v>rv && v<rv+.075-(u-.47)*.4) return G.gun;      // magazine
       if (arm) {
-        if (v>.38 && v<.46) return G.skinDk; // gloves near weapon
-        return u<.5?G.shirt:G.shirtDk;
+        if (v>.38 && v<.46) return skin(look,.8); // gloves near weapon
+        return u<.5?fab(u,v,look,1):fab(u,v,look,.76);
       }
       if (v>.525) return c<.03?G.buckle:G.belt;
       if (c<.19 && v>.23 && v<.52) {
         if (v>.44 && v<.51 && Math.abs((c%.065)-.032)<.026) return v<.452?G.pouchDk:G.pouch;
         if (v>.25 && v<.29 && c<.05) return [40,46,36];
-        return c>.165?G.pouchDk:G.vest;
+        if (c>.165) return G.pouchDk;
+        return ((v*110)|0)%3===0?G.webbing:G.vest;   // MOLLE webbing rows
       }
-      return G.shirt;
+      return fab(u,v,look,1);
     }
     // back: backpack
-    if (arm) return v>.5?G.skinDk:(u<.5?G.shirt:G.shirtDk);
+    if (arm) return v>.5?skin(look,.8):(u<.5?fab(u,v,look,1):fab(u,v,look,.76));
     if (v>.525) return G.belt;
     if (c<.15 && v>.24 && v<.5) {
       if (v<.27 || Math.abs(c-.1)<.012) return G.pouchDk;
@@ -1124,11 +1565,16 @@ function guardPixel(view,u,v,firing,step,aim=0) {
 }
 
 // downed guard lying on his side: helmet left, boots right, rifle dropped beside him
-function corpsePixel(u,v) {
+function corpsePixel(u,v,pose=0,look=.5) {
   if (u<0||u>1||v<0||v>1) return;
+  if (pose===1) u=1-u;                                                                   // fell the other way
+  if (pose===2) {                                                                        // face down, one arm flung past the head
+    if (u>.0 && u<.2 && v>.06 && v<.2) return u<.05?skin(look,.8):fab(u,v,look,.76);
+    if (u>.6 && v<.36 && v>.18 && u<.88) return u>.84?G.boot:fab(u,v+.37,look,.76);  // splayed leg
+  }
   if (v>.82 && u>.18 && u<.86 && Math.abs(v-.9)<.04) return u<.3?G.gunHi:G.gun;       // dropped rifle
   if (ellipse(u,v,.09,.55,.075,.3)) return v<.4?G.helmetHi:G.helmet;
-  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?G.skin:G.skinDk;               // face/neck
+  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?skin(look,1):skin(look,.8);               // face/neck
   if (u>=.18 && u<.55 && v>.3 && v<.86) {
     if (u>.5) return G.belt;
     if (v<.42 && u>.24 && u<.48) return G.pouchDk;
@@ -1137,9 +1583,9 @@ function corpsePixel(u,v) {
   if (u>=.55 && u<.92 && v>.38 && v<.84) {
     if (u>.86) return G.boot;
     if (u>.68 && u<.73) return G.pad;
-    return v<.6?G.pants:G.pantsDk;
+    return v<.6?fab(u,v+.37,look,1):fab(u,v+.37,look,.76);
   }
-  if (u>.22 && u<.44 && v>.78 && v<.92) return G.shirtDk;                                // arm
+  if (u>.22 && u<.44 && v>.78 && v<.92) return fab(u,v,look,.76);                                // arm
 }
 
 // ---------- Intel case sprite ----------
@@ -1162,13 +1608,228 @@ function intelPixel(u,v,turn) {
   return ridge?[214,118,36]:[238,140,46];
 }
 
+// ===== Light: sun with real shadows, sky ambient, wall lamps, ambient occlusion =====
+// Sun visibility is cached per quarter-voxel and worked out lazily the first time a pixel needs it.
+// Any change to the grid clears the cache over the region whose shadows it could affect.
+const SQ=4, sunVis=new Uint8Array(X*SQ*Y*SQ*Z*SQ).fill(255);
+const shadowRay={};
+let dirty=null;
+function markDirty(x,y,z) {
+  if (!dirty) dirty={x0:x,y0:y,z0:z,x1:x,y1:y,z1:z};
+  else { dirty.x0=Math.min(dirty.x0,x); dirty.y0=Math.min(dirty.y0,y); dirty.z0=Math.min(dirty.z0,z);
+    dirty.x1=Math.max(dirty.x1,x); dirty.y1=Math.max(dirty.y1,y); dirty.z1=Math.max(dirty.z1,z); }
+}
+function applyDirty() {
+  if (!dirty) return;
+  const [sx,sy,sz]=palette.sunDir, reach=Y/Math.max(.2,sy);
+  // a voxel shades points down-sun of it, so stretch the box away from the sun
+  const x0=Math.max(0,Math.floor((dirty.x0+Math.min(0,-sx*reach)-1)*SQ)), x1=Math.min(X*SQ,Math.ceil((dirty.x1+1+Math.max(0,-sx*reach)+1)*SQ));
+  const z0=Math.max(0,Math.floor((dirty.z0+Math.min(0,-sz*reach)-1)*SQ)), z1=Math.min(Z*SQ,Math.ceil((dirty.z1+1+Math.max(0,-sz*reach)+1)*SQ));
+  const y1=Math.min(Y*SQ,(dirty.y1+2)*SQ), XS=X*SQ, ZS=Z*SQ;
+  for (let y=0;y<y1;y++) for (let z=z0;z<z1;z++) { const row=(y*ZS+z)*XS; sunVis.fill(255,row+x0,row+x1); }
+  dirty=null;
+}
+function sunlit(x,y,z) {
+  const qx=Math.floor(x*SQ), qy=Math.floor(y*SQ), qz=Math.floor(z*SQ);
+  if (qx<0 || qy<0 || qz<0 || qx>=X*SQ || qy>=Y*SQ || qz>=Z*SQ) return 1;
+  const i=(qy*Z*SQ+qz)*X*SQ+qx;
+  let v=sunVis[i];
+  if (v===255) {
+    const [sx,sy,sz]=palette.sunDir;
+    v=sunVis[i]=trace(x,y,z,sx,sy,sz,40,shadowRay)?0:1;
+  }
+  return v;
+}
+// Lamps: each floor column keeps the short list of lamps that can reach it.
+let lampField=[];
+function buildLampField() {
+  lampField=new Array(X*Z);
+  lamps.forEach((L,n)=>{
+    for (let z=Math.max(0,Math.floor(L.z-L.r));z<=Math.min(Z-1,L.z+L.r);z++)
+      for (let x=Math.max(0,Math.floor(L.x-L.r));x<=Math.min(X-1,L.x+L.r);x++)
+        (lampField[z*X+x]??=[]).push(n);
+  });
+}
+let LR=0, LG=0, LB=0;
+// light arriving at a point (sun + sky + lamps) -> LR, LG, LB
+const XQ=X*SQ, YQ=Y*SQ, ZQ=Z*SQ;
+function lightAt(px,py,pz,nx,ny,nz,ao,sun) {
+  const S=palette.sunDir, A=palette.amb, C=palette.sun;
+  const amb=(.64+.36*ny)*ao;
+  const ndl=nx*S[0]+ny*S[1]+nz*S[2];
+  let direct=0;
+  if (ndl>0 && sun) {
+    const x=px+nx*.04, y=py+ny*.04, z=pz+nz*.04;
+    const qx=(x*SQ)|0, qy=(y*SQ)|0, qz=(z*SQ)|0;
+    if (qx<0 || qy<0 || qz<0 || qx>=XQ || qy>=YQ || qz>=ZQ) direct=ndl;
+    else {
+      const i=(qy*ZQ+qz)*XQ+qx;
+      let v=sunVis[i];
+      if (v===255) v=sunVis[i]=trace(x,y,z,S[0],S[1],S[2],40,shadowRay)?0:1;
+      direct=ndl*v;
+    }
+  }
+  LR=A[0]*amb+C[0]*direct; LG=A[1]*amb+C[1]*direct; LB=A[2]*amb+C[2]*direct;
+  const list=lampField[Math.floor(pz)*X+Math.floor(px)];
+  if (list) {
+    const K=palette.lamp, k=palette.lampK;
+    for (const n of list) {
+      const L=lamps[n];
+      if (L.dead) continue;
+      const lx=L.x-px, ly=L.y-py, lz=L.z-pz, d2=lx*lx+ly*ly+lz*lz, r2=L.r*L.r;
+      if (d2>r2 || lx*L.nx+lz*L.nz>.25) continue;        // lamps only shine forward, never through their wall
+      const d=Math.sqrt(d2)||1, f=(1-d2/r2), lam=Math.max(0,(nx*lx+ny*ly+nz*lz)/d);
+      const e=f*f*(.25+.75*lam)*L.power*k*(ao*.5+.5);
+      LR+=K[0]*e; LG+=K[1]*e; LB+=K[2]*e;
+    }
+  }
+}
+// Bullet holes (kept per voxel so a lookup only happens on marked voxels) and blast scorches.
+const decals=[], decalCount=new Uint8Array(X*Y*Z), scorches=[];
+function addDecal(vx,vy,vz,x,y,z,r) {
+  if (!inside(vx,vy,vz)) return;
+  if (decals.length>=220) { const d=decals.shift(); decalCount[d.i]--; }
+  const i=index(vx,vy,vz);
+  decals.push({i,x,y,z,r}); decalCount[i]++;
+}
+
+// World-space surface detail. Reads and writes the albedo in AR, AG, AB; returns ambient occlusion.
+let AR=0, AG=0, AB=0;
+const fract=v=>v-Math.floor(v);
+function paint(c,t) { AR+=(c[0]-AR)*t; AG+=(c[1]-AG)*t; AB+=(c[2]-AB)*t; }
+function surface(id,side,nx,ny,nz,vx,vy,vz,px,py,pz) {
+  let k=1, ao=1;
+  if (side!==1 && (id===2 || id===3 || id===10)) {
+    const au=side===0?pz:px, fa=fract(au), plane=(side===0?vx:vz)*2+(nx+nz>0?1:0);
+    const ax=vx+nx, az=vz+nz, iy=Math.floor(py);
+    // corners: darker where this face meets another wall
+    const lo=side===0?tile(ax,iy,vz-1):tile(vx-1,iy,az), hi=side===0?tile(ax,iy,vz+1):tile(vx+1,iy,az);
+    if (lo) ao*=.55+.45*Math.min(1,fa*2.2);
+    if (hi) ao*=.55+.45*Math.min(1,(1-fa)*2.2);
+    ao*=.62+.38*Math.min(1,(py-1)/2.4);
+    // water streaks from the top edge, grime splashed up from the floor
+    const hs=h3(Math.floor(au*6),plane,3);
+    if ((hs&7)===0) k*=1-.32*((hs>>3&7)/7)*Math.exp(-(wallTop-py)*.32);
+    k*=1-.06*Math.max(0,py-(wallTop-.5))*2;
+    if (py<2.1) { const g=(2.1-py)/1.1; k*=1-.22*g; AR*=1+.04*g; AB*=1-.08*g; }
+    if (id===3) {
+      // rust runs down from the cladding bolts
+      const hr=h3(Math.floor(au*4),plane,11);
+      if ((hr&3)===0) paint([110,58,34],Math.max(0,.55-fract(py/4.5)*.9)*((hr>>2&7)/7));
+    } else {
+      // painted hazard stripes on the edges of every opening
+      const edgeLo=fa<.32 && !(side===0?tile(vx,iy,vz-1):tile(vx-1,iy,vz)) && !lo;
+      const edgeHi=fa>.68 && !(side===0?tile(vx,iy,vz+1):tile(vx+1,iy,vz)) && !hi;
+      if ((edgeLo || edgeHi) && py<5.6 && py>1.05) {
+        const s=Math.floor((au+py)*2.6)&1?palette.stripe:palette.stripeDark;
+        AR=s[0]; AG=s[1]; AB=s[2]; k*=.85+.15*fract(h3(Math.floor(au*12),Math.floor(py*12),5)/4096);
+        if (id===10 && py<1.5) k*=.8;
+      }
+      else if (id===2) {
+        // cast-in-place: lifts with their own tone, form-tie holes, panel joints, scattered cracks
+        const lift=Math.floor((py-1)/2.5), lv=fract((py-1)/2.5)*2.5;
+        k*=.93+.12*((h3(Math.floor(au/4),lift,plane)&15)/15);
+        if (lv<.035) k*=.78;
+        if (fract(au/4)<.025) k*=.75;
+        const tu=fract(au/2)-.5, tv=lv-1.25, d2=tu*tu+tv*tv;
+        if (d2<.0022) k*=.5; else if (d2<.006) k*=1.06;
+        const hb=h3(Math.floor(au/4),Math.floor(py/4),plane+7);
+        if (hb%3===0) {
+          let cu=Math.floor(fract(au/4)*64), cv=Math.floor(fract(py/4)*64);
+          if (hb&16) cu=63-cu;
+          const c=crackMask[(63-cv)*64+cu];
+          if (c===1) k*=.4; else if (c===2) k*=1.12;
+        }
+        // pipe runs along some walls, held on brackets
+        if ((h3(Math.floor(au/7),plane,9)&3)===0 && py>5.8 && py<6.8) {
+          if (py>6.25 && py<6.7) {
+            const t=(py-6.25)/.45, sh=.42+.78*Math.sin(t*Math.PI)**.7+(t>.62&&t<.72?.25:0);
+            AR=88*sh; AG=96*sh; AB=94*sh;
+          } else if (py<6.0) { AR=48; AG=50; AB=50; }
+          if (fract(au/2.5)<.05) { AR=40; AG=42; AB=42; }
+        }
+      } else if (id===10 && py<1.45) { const s=Math.floor((au+py)*2.6)&1?palette.stripe:palette.stripeDark; paint(s,.85); }
+    }
+  } else if (side===1 && ny>0 && (id===1 || id===12 || id===4)) {
+    // floor: dark against the walls, oil stains, drains, painted markings
+    const ix=Math.floor(px), iz=Math.floor(pz), fx=px-ix, fz=pz-iz;
+    const w=index(ix,1,iz);
+    if (world[w-1]) ao*=.5+.5*Math.min(1,fx*1.9);
+    if (world[w+1]) ao*=.5+.5*Math.min(1,(1-fx)*1.9);
+    if (world[w-X]) ao*=.5+.5*Math.min(1,fz*1.9);
+    if (world[w+X]) ao*=.5+.5*Math.min(1,(1-fz)*1.9);
+    if (id===4) {
+      const lx=px-extraction.x, lz=pz-extraction.z, m=Math.max(Math.abs(lx),Math.abs(lz));
+      if (Math.abs(m-2.15)<.13 || (Math.abs(Math.abs(lx)-.72)<.13 && Math.abs(lz)<1) || (Math.abs(lz)<.12 && Math.abs(lx)<.72)) paint([214,226,206],.85);
+      return ao;
+    }
+    const hb=h3(Math.floor(px/3),Math.floor(pz/3),13);
+    if ((hb&7)<2) {
+      const ox=(hb>>4&15)/15*3, oz=(hb>>8&15)/15*3, r=.5+(hb>>12&7)/7;
+      const ex=fract(px/3)*3-ox, ez=fract(pz/3)*3-oz, d2=(ex*ex+ez*ez)/(r*r);
+      if (d2<1) k*=.72+.28*d2;
+    }
+    if (id===1) {
+      const lx=(px-1)%stride, lz=(pz-1)%stride;
+      if (Math.abs(lx-2.5)<.55 && Math.abs(lz-2.5)<.55 && !(foyerBox && px>=foyerBox.x0 && px<foyerBox.x1 && pz<foyerBox.z1)) {
+        AR=58; AG=60; AB=60; if (Math.abs(lx-2.5)<.47 && Math.abs(lz-2.5)<.47 && Math.floor(lx*9)%2) { AR=14; AG=15; AB=15; }
+      }
+      if (foyerBox && px>=foyerBox.x0 && px<foyerBox.x1 && pz>=foyerBox.z0 && pz<foyerBox.z1) {
+        // loading-bay lines around the pad and hatching in front of it, scuffed by traffic
+        const bx=Math.abs(px-extraction.x), wear=.55+.45*fract(h3(Math.floor(px*5),Math.floor(pz*5),3)/9973);
+        if ((Math.abs(bx-4)<.14 && pz<8.6) || (Math.abs(pz-8.6)<.14 && bx<4) ||
+            (pz>8.6 && pz<9.8 && bx<4 && fract((px+pz)*.9)<.32)) paint(palette.stripe,.8*wear);
+      }
+    }
+  } else if (id===13 || id===14) truckDetail(id,side,px,py,pz);
+  AR*=k; AG*=k; AB*=k;
+  return ao;
+}
+// Truck: wheels and a dark undercarriage on the chassis row, windows and a grille on the cab,
+// hoops showing through the canvas over the bed, mud splashed up the sides.
+function truckDetail(id,side,px,py,pz) {
+  const t=trucks.find(t=>px>t.x0-.05 && px<t.x1+.05 && pz>t.z0-.05 && pz<t.z1+.05);
+  if (!t) return;
+  const a=t.along==="x"?px-t.x0:pz-t.z0;                 // 0 at the front bumper, 6 at the tailgate
+  const lengthwise=(t.along==="x")===(side===2);         // a long side of the truck rather than an end
+  if (id===14 && py<2.02 && side!==1) {
+    if (lengthwise) {
+      let w=9;
+      for (const c of [1.05,4.1,5.15]) w=Math.min(w,Math.hypot(a-c,py-1.48));
+      if (w<.47) { const hub=w<.2; AR=hub?96:24; AG=hub?98:24; AB=hub?92:26; if (w>.4) { AR=36; AG=36; AB=38; } return; }
+      AR=AR*(py<1.6?.35:.8); AG*=py<1.6?.35:.8; AB*=py<1.6?.35:.8;
+      return;
+    }
+    if (a<.1 && py>1.5) { if (Math.floor(((t.along==="x"?pz:px)*6))%2) { AR*=.5; AG*=.5; AB*=.5; } return; }  // grille
+    AR*=.4; AG*=.4; AB*=.4; return;
+  }
+  if (id===14) {                                          // cab glass: sky reflection fading down the pane
+    const f=fract(py), b=colors[13], along=fract(side===0?pz:px);
+    if (side===1 || along<.12 || along>.88 || f>.8) { AR=b[0]*.9; AG=b[1]*.9; AB=b[2]*.9; return; }   // roof and pillars
+    const r=palette.skyLo;
+    AR=r[0]*.45*f+20; AG=r[1]*.45*f+22; AB=r[2]*.45*f+26;
+    if (f<.08 || f>.92) { AR=30; AG=32; AB=30; }
+    return;
+  }
+  if (a>2 && lengthwise && fract((a-2)/1.33)<.06) { AR*=.8; AG*=.8; AB*=.8; }
+  if (a>2) { AR*=1.04; AG*=1.06; AB*=.94; }               // canvas over the bed is a touch greener
+  if (py<2.7) paint([88,72,52],Math.min(.6,(2.7-py)*.5));
+}
 function render(clock) {
+  applyDirty();
+  for (const L of lamps) if (!L.dead && !tile(L.ax,L.ay,L.az)) {
+    L.dead=true;                                           // its wall is gone; the lamp drops
+    for (let n=0;n<8;n++) particles.push({x:L.x,y:L.y,z:L.z,vx:(Math.random()-.5)*3,vy:Math.random()*2,vz:(Math.random()-.5)*3,life:.3+Math.random()*.3,shade:1,spark:true});
+    buildLampField();
+  }
   const [fx,fy,fz]=direction();
   const rx=Math.cos(player.yaw), rz=-Math.sin(player.yaw);
   const ux=-Math.sin(player.yaw)*fy, uy=Math.cos(player.pitch);
   const uz=-Math.cos(player.yaw)*fy;
   const flashStrength=flash/.075;
   const blastStrength=blast?Math.min(.66,blast.life*2):0;
+  const S=palette.sunDir, SC=palette.sun, lo=palette.skyLo, hi=palette.skyHi, cl=palette.cloud, F=palette.fog;
+  const drift=clock*.012;
   for (let row=0;row<height;row++) {
     const v=(height/2-row-.5)/focal;
     const bx=fx+ux*v, by=fy+uy*v, bz=fz+uz*v;
@@ -1178,22 +1839,45 @@ function render(clock) {
       const id=trace(player.x,player.eye,player.z,dx,by,dz,68,ray);
       const i=row*width+col, j=i*4;
       depth[i]=ray.t;
+      const inv=1/Math.sqrt(dx*dx+by*by+dz*dz), sd=(dx*S[0]+by*S[1]+dz*S[2])*inv;
       if (!id) {
-        const altitude=Math.max(0,Math.min(1,by*1.8));
-        const sunlight=Math.max(0,1-((dx+.25)**2+(by-.39)**2+(dz-.82)**2)*9);
-        const glow=sunlight**4*93;
-        const lo=palette.skyLo, hi=palette.skyHi;
-        pixels[j]=lo[0]+(hi[0]-lo[0])*altitude+glow;
-        pixels[j+1]=lo[1]+(hi[1]-lo[1])*altitude+glow*.82;
-        pixels[j+2]=lo[2]+(hi[2]-lo[2])*altitude+glow*.53;
+        const ny=by*inv, altitude=Math.max(0,Math.min(1,ny*1.8));
+        let r=lo[0]+(hi[0]-lo[0])*altitude, g=lo[1]+(hi[1]-lo[1])*altitude, b=lo[2]+(hi[2]-lo[2])*altitude;
+        if (ny>.01) {
+          // drifting cloud deck, lit from the sun side
+          const cx=dx*inv/(ny+.12)*1.4+drift, cz=dz*inv/(ny+.12)*1.4;
+          const n=.5+.22*(Math.sin(cx*1.7+Math.sin(cz*1.3))+Math.sin(cz*2.1+.7*Math.sin(cx*2.9)))+.1*Math.sin(cx*5.3+cz*4.1)+.05*Math.sin(cx*11.7-cz*9.3);
+          const c=Math.max(0,Math.min(1,(n-1+palette.clouds)*2.6))*Math.min(1,ny*5);
+          const lit=.72+.4*Math.max(0,sd);
+          r+=(cl[0]*lit-r)*c; g+=(cl[1]*lit-g)*c; b+=(cl[2]*lit-b)*c;
+        }
+        if (sd>0) {
+          const glow=(sd**28*70+sd**4*22)*palette.glare+(sd>.9994?160*palette.glare:0);
+          r+=glow*SC[0]; g+=glow*SC[1]; b+=glow*SC[2];
+        }
+        pixels[j]=r; pixels[j+1]=g; pixels[j+2]=b;
       } else {
         const px=player.x+dx*ray.t, py=player.eye+by*ray.t, pz=player.z+dz*ray.t;
-        const u=ray.side===0?pz:px;
-        const v=ray.side===1?pz:-py;
-        const texel=(((Math.floor(v*16)&63)*64)+(Math.floor(u*16)&63))*3;
-        const tex=textures[id];
-        const floorShade=(ray.side===1?.88:Math.min(1.13,.66+(py-1)*.085))*(id===7?ray.tint:1);
-        const haze=Math.min(.68,ray.t*.014);
+        const side=ray.side;
+        const nx=side===0?(dx>0?-1:1):0, ny=side===1?(by>0?-1:1):0, nz=side===2?(dz>0?-1:1):0;
+        const tu=side===0?pz:px, tv=side===1?pz:-py;
+        const texel=(((Math.floor(tv*16)&63)*64)+(Math.floor(tu*16)&63))*3;
+        const tex=textures[id], tint=ray.tint;
+        AR=tex[texel]*tint; AG=tex[texel+1]*tint; AB=tex[texel+2]*tint;
+        const ao=surface(id,side,nx,ny,nz,ray.x,ray.y,ray.z,px,py,pz);
+        const vi=ray.x+X*(ray.z+Z*ray.y);
+        if (decalCount[vi]) for (const d of decals) {
+          if (d.i!==vi) continue;
+          const a=side===0?pz-d.z:px-d.x, b=side===1?pz-d.z:py-d.y, q=(a*a+b*b)/(d.r*d.r);
+          if (q<1) { AR*=.18; AG*=.18; AB*=.18; } else if (q<2.6) { const m=.62+.3*(q-1)/1.6; AR*=m; AG*=m; AB*=m; }
+        }
+        for (const s of scorches) {
+          const q=((px-s.x)**2+(py-s.y)**2+(pz-s.z)**2)/(s.r*s.r);
+          if (q<1) { const m=.3+.7*q**.7; AR*=m; AG*=m*.97; AB*=m*.94; }
+        }
+        lightAt(px,py,pz,nx,ny,nz,ao,true);
+        const haze=Math.min(.72,ray.t*.0145);
+        const keep=1-haze, glare=Math.max(0,sd)**6*.45*palette.glare;
         const muzzle=flashStrength*Math.max(0,1-ray.t*.15)*.38;
         const glow=blastStrength?blastStrength*Math.max(0,1-((px-blast.x)**2+(py-blast.y)**2+(pz-blast.z)**2)/34):0;
         // warm pool of light around the intel case, green around the pad once it's live
@@ -1201,11 +1885,10 @@ function render(clock) {
         const intelGlow=hasIntel?0:Math.max(0,1-(ix*ix+(py-2.4)**2+iz*iz)/9)*(.22+.06*Math.sin(clock*4));
         const ex=px-extraction.x, ez=pz-extraction.z;
         const padGlow=hasIntel?Math.max(0,1-(ex*ex+(py-1)**2+ez*ez)/16)*(.3+.1*Math.sin(clock*5)):0;
-        const light=faceLight[ray.side]*floorShade*(1-haze);
-        const warmth=muzzle+glow+intelGlow;
-        pixels[j]=tex[texel]*light+10+groundFog[0]*haze+warmth*116+padGlow*20;
-        pixels[j+1]=tex[texel+1]*light+14+groundFog[1]*haze+warmth*76+padGlow*120;
-        pixels[j+2]=tex[texel+2]*light+15+groundFog[2]*haze+warmth*32+padGlow*70;
+        const warmth=(muzzle+glow+intelGlow)*keep;
+        pixels[j]=(AR*LR)*keep+(F[0]+SC[0]*90*glare)*haze+warmth*116+padGlow*20;
+        pixels[j+1]=(AG*LG)*keep+(F[1]+SC[1]*90*glare)*haze+warmth*76+padGlow*120;
+        pixels[j+2]=(AB*LB)*keep+(F[2]+SC[2]*90*glare)*haze+warmth*32+padGlow*70;
       }
       pixels[j+3]=255;
     }
@@ -1218,9 +1901,16 @@ function render(clock) {
       y:height/2-(dx*ux+dy*uy+dz*uz)*focal/distance,distance};
   }
   // colorAt(u,v,du,dv) returns [r,g,b] (opaque, depth-written) or [r,g,b,a] (additive glow).
-  function sprite(x,y,z,w,h,colorAt,opacity=1,outline=false) {
+  // lit: light falling on the sprite (sun if not in shadow, sky, lamps), or null for self-lit things
+  function spriteLight(x,y,z) {
+    const tx=player.x-x, tz=player.z-z, tl=Math.hypot(tx,tz)||1;
+    lightAt(x,y,z,tx/tl*.9,.3,tz/tl*.9,1,true);
+    return [LR*.95+.08,LG*.95+.08,LB*.95+.08];
+  }
+  function sprite(x,y,z,w,h,colorAt,opacity=1,outline=false,lit=null) {
     const p=project(x,y,z);
     if (!p) return;
+    const lr=lit?lit[0]:1, lgc=lit?lit[1]:1, lb=lit?lit[2]:1;
     const sw=focal*w/p.distance, sh=focal*h/p.distance;
     const left=p.x-sw/2, top=p.y-sh/2;
     const du=1/sw, dv=1/sh;
@@ -1242,9 +1932,9 @@ function render(clock) {
           if (outline && (!colorAt(u-du,v,du,dv) || !colorAt(u+du,v,du,dv) || !colorAt(u,v-dv,du,dv) || !colorAt(u,v+dv,du,dv))) k=.48;
           const shade=k*(1.12-Math.abs(u-.42)*.5-v*.12)*(1-haze);
           depth[i]=p.distance;
-          pixels[j]=c[0]*shade+groundFog[0]*haze;
-          pixels[j+1]=c[1]*shade+groundFog[1]*haze;
-          pixels[j+2]=c[2]*shade+groundFog[2]*haze;
+          pixels[j]=c[0]*shade*lr+groundFog[0]*haze;
+          pixels[j+1]=c[1]*shade*lgc+groundFog[1]*haze;
+          pixels[j+2]=c[2]*shade*lb+groundFog[2]*haze;
         } else {
           const alpha=opacity*Math.max(0,1-4*((u-.5)**2+(v-.5)**2));
           for (let channel=0;channel<3;channel++)
@@ -1265,17 +1955,18 @@ function render(clock) {
     const view=guardView(g);
     const fall=g.fall||0;
     const step=Math.sin(g.gait)*g.pace;
+    const lit=spriteLight(g.x,2.6,g.z);
     if (fall>=.55) {
-      const lie=Math.min(1,(fall-.55)/.45);
-      sprite(g.x,1+.32,g.z,2.9,.64,(u,v)=>corpsePixel(u,v/lie-(1/lie-1)),1,true);
+      const lie=Math.min(1,(fall-.55)/.45), pose=g.pose??=h3(Math.floor(g.x*7),Math.floor(g.z*7),3)%3;
+      sprite(g.x,1+.32,g.z,2.9,.64,(u,v)=>corpsePixel(u,v/lie-(1/lie-1),pose,g.look),1,true,spriteLight(g.x,1.4,g.z));
       continue;
     }
     const height=3.26-2.8*fall;
     const hitOffset=g.impact*1.2;
     sprite(g.x,1+height/2+Math.abs(step)*.06,g.z,1.76+fall*.56,height,(u,v)=>{
-      const color=guardPixel(view,u-hitOffset*(1-v),v,g.muzzle>0,step,g.aim>0?1-g.aim/windup:0);
+      const color=guardPixel(view,u-hitOffset*(1-v),v,g.muzzle>0,step,g.aim>0?1-g.aim/windup:0,g.look);
       return color && g.impact?[color[0]+60,color[1]+22,color[2]+10]:color;
-    },1,true);
+    },1,true,lit);
     const mk=view==="front"?.18:view==="right"?.82:view==="left"?-.82:0;   // muzzle offset across the sprite
     const my=3.27;
     if (g.muzzle>0) sprite(g.x+rx*mk,my,g.z+rz*mk,1.1,1.1,glowAt(255,190,90,.9));
@@ -1309,7 +2000,7 @@ function render(clock) {
     const bob=Math.sin(clock*2.4)*.12;
     const w=1.25*(.72+.28*turn);
     sprite(intel.x,1.2,intel.z,3.4,3.4,glowAt(255,150,50,.55+.15*Math.sin(clock*4)));
-    sprite(intel.x,2.55+bob,intel.z,w,.95,(u,v)=>intelPixel(u,v,1),1,true);
+    sprite(intel.x,2.55+bob,intel.z,w,.95,(u,v)=>intelPixel(u,v,1),1,true,spriteLight(intel.x,2.6,intel.z).map(c=>Math.max(.9,c)));
     sprite(intel.x,7,intel.z,1.1,10,shaftAt(255,170,70,.32));
   } else {
     sprite(extraction.x,6,extraction.z,2.2,10,shaftAt(80,255,150,.4));
@@ -1327,7 +2018,7 @@ function render(clock) {
       if (u<.08 || u>.92) return;
       if (Math.abs(u-.2)<.05 || Math.abs(u-.45)<.05) return [82,90,62];
       return v>.7?[176,160,120]:[214,198,152];
-    },1,true);
+    },1,true,spriteLight(x,y,z));
     if (lit) sprite(x-dx*.2,y+.05,z-dz*.2,1.4,1.4,glowAt(255,60,30,.9));
   }
   for (const f of fallers) {
@@ -1343,7 +2034,7 @@ function render(clock) {
         const t=(((v*24)|0)%64*64+((u*24+c*9)|0)%64)*3;
         const e=(.85-dv*.5-du*.3)*k;   // lit from the upper left
         return [base[t]*e,base[t+1]*e,base[t+2]*e];
-      },1,true);
+      },1,true,spriteLight(f.x,f.y,f.z));
     }
   }
   for (const b of bullets) {
@@ -1353,11 +2044,24 @@ function render(clock) {
     }
     sprite(b.x,b.y,b.z,.08,.08,()=>[255,245,210]);
   }
+  // wall lamps: a caged bulb on a bracket, with a soft halo
+  for (const L of lamps) {
+    if (L.dead) continue;
+    const K=palette.lamp;
+    sprite(L.x+L.nx*.12,L.y,L.z+L.nz*.12,.42,.34,(u,v)=>{
+      if (v<.18) return Math.abs(u-.5)<.42?[44,46,44]:null;            // hood
+      const c=(u-.5)**2/.1+(v-.6)**2/.16;
+      if (c>1) return;
+      if (Math.abs(u-.5)<.04 || Math.abs(v-.6)<.04 || c>.8) return [30,32,30];  // wire cage
+      return [255*K[0],255*K[1],255*K[2]];
+    },1,false);
+    sprite(L.x+L.nx*.2,L.y,L.z+L.nz*.2,1.6*L.power,1.6*L.power,glowAt(255*K[0],255*K[1],255*K[2],.35*palette.lampK));
+  }
   for (const p of particles) {
-    if (p.spark) { sprite(p.x,p.y,p.z,.18,.18,glowAt(255,200,110,p.life*5)); continue; }
-    if (p.dust) continue;
+    if (p.spark) { sprite(p.x,p.y,p.z,.14,.14,glowAt(255,210,130,Math.min(1,p.life*6))); continue; }
+    if (p.dust || p.smoke) continue;
     const k=.7+p.shade*.5;
-    sprite(p.x,p.y,p.z,.11+p.shade*.08,.11+p.shade*.08,()=>[rubbleColor[0]*k,rubbleColor[1]*k,rubbleColor[2]*k]);
+    sprite(p.x,p.y,p.z,.11+p.shade*.08,.11+p.shade*.08,()=>[rubbleColor[0]*k,rubbleColor[1]*k,rubbleColor[2]*k],1,false,spriteLight(p.x,p.y,p.z));
   }
   if (blast) {
     const t=(.42-blast.life)/.42;
@@ -1377,9 +2081,17 @@ function render(clock) {
     });
   }
   for (const p of particles) {
+    if (p.smoke) {
+      // blast smoke: a dark, slowly spreading plume that thins out as it rises
+      const age=1-p.life/p.max, size=1.6+age*5.5, k=.32+p.shade*.14;
+      const L=spriteLight(p.x,p.y,p.z), c=[dustColor[0]*k*L[0],dustColor[1]*k*L[1],dustColor[2]*k*L[2]];
+      sprite(p.x,p.y,p.z,size,size,()=>c,Math.min(.5,p.life/p.max*.75)*(age<.08?age/.08:1));
+      continue;
+    }
     if (!p.dust) continue;
-    const size=1.4+(1.6-p.life)*1.4;
-    sprite(p.x,p.y,p.z,size,size,()=>dustColor,Math.min(.22,p.life*.25));
+    const size=(p.size||1)*(1.4+(1.6-p.life)*1.4);
+    const L=spriteLight(p.x,p.y,p.z), c=[dustColor[0]*L[0],dustColor[1]*L[1],dustColor[2]*L[2]];
+    sprite(p.x,p.y,p.z,size,size,()=>c,Math.min(.22,p.life*.25));
   }
   ctx.putImageData(image,0,0);
 
@@ -1418,7 +2130,10 @@ function line(color,w,points) {
 // point along the handguard/barrel axis: t=0 receiver front, t=1 muzzle
 const axis=t=>[30-t*2.6,-17-t*29];
 
+let vmSmoke=[], lastClock=0;
 function drawRifle(clock) {
+  lastClock=clock;
+  vmSmoke=vmSmoke.filter(w=>clock-w.born<1.2);
   const recoil=cooldown>.08?Math.sin((.21-cooldown)/.13*Math.PI)*5:0;
   const dip=reload?Math.sin(reload/1.15*Math.PI):0;
   const plant=charge?.plant>0?Math.min(1,(1-charge.plant/plantTime)*5):0;
@@ -1451,6 +2166,12 @@ function drawRifle(clock) {
   // charging handle + ejection port
   poly("#1c2120",[[40,-12],[47,-11],[48,-8],[41,-8.5]]);
   poly("#0e1111",[[30,-12],[39,-11.5],[38,-9],[30,-9.6]]);
+  // worn edges: paint rubbed through to bare metal where hands and kit touch it
+  line("rgba(196,204,198,.38)",.4,[[17,-6.2],[24,-7.2],[44,-6.2]]);
+  line("rgba(196,204,198,.3)",.35,[[20,-15.2],[25.2,-21.2]]);
+  line("rgba(196,204,198,.32)",.35,[[22.2,10.5],[25.5,27.5]]);
+  line("rgba(196,204,198,.25)",.3,[[13,7.6],[17.2,-5.8]]);
+  for (const [x0,y0,x1,y1] of [[32,-6.6,35,-7],[18,2,19.4,-1],[43,1,46,3.2],[27,24,29,24.4]]) line("rgba(170,178,172,.35)",.25,[[x0,y0],[x1,y1]]);
 
   // handguard: tapers toward the muzzle, top rail with slots
   poly(lg(19,0,37,0,"#232a28","#4a5652","#2a3230"),[[20,-16],[25.5,-38],[30.8,-38.6],[38,-17]],"#56625d");
@@ -1464,10 +2185,12 @@ function drawRifle(clock) {
     poly("#151a19",[[ax+3.4-k*.4,ay+1],[ax+4.6-k*.5,ay+1],[ax+4.2-k*.5,ay-2.4],[ax+3.1-k*.4,ay-2.4]]);
   }
 
-  // holographic sight (sits low on the receiver)
+  // holographic sight (sits low on the receiver): rail clamp, armoured hood, coated window
   vm.save(); vm.translate(33,-20); vm.scale(.82,.82); vm.translate(-33,20); vm.translate(0,4);
   poly("#1a1f1e",[[26,-19.5],[39,-18],[40,-21.5],[27,-23]]);
+  poly("#0d1010",[[29,-19],[31,-18.8],[31,-16.6],[29,-16.8]]); poly("#0d1010",[[35,-18.4],[37,-18.2],[37,-16],[35,-16.2]]);  // clamp screws
   poly(lg(24,-34,40,-20,"#2f3735","#121615"),[[25,-21.5],[24.8,-31],[27.5,-34.5],[37.5,-33.8],[40.5,-30],[40.5,-20.5]],"#59645f");
+  line("rgba(200,210,204,.35)",.35,[[25.2,-30.6],[27.7,-34.1],[37.3,-33.5]]);   // worn hood edge
   poly(lg(27,-32,38,-23,"rgba(80,150,160,.85)","rgba(20,46,52,.9)","rgba(60,110,120,.85)"),
     [[27.4,-23.2],[27.3,-30],[29,-32.2],[36.4,-31.7],[38.2,-29.3],[38.2,-23]]);
   line("rgba(220,250,255,.55)",.6,[[29.4,-30.8],[33.8,-24.5]]);
@@ -1482,6 +2205,15 @@ function drawRifle(clock) {
   for (let k=0;k<3;k++) line("#5a5e55",.5,[[40+k*3,10+k*5],[50+k*2.5,8+k*5]]);
   poly("#33362f",[[29,5],[38,3.5],[39,7],[30,8.5]]);
 
+  // muzzle smoke: a few grey wisps curl up from the barrel after each shot
+  for (const w of vmSmoke) {
+    const age=clock-w.born;
+    if (age<0 || age>1.1) continue;
+    const r=3+age*14, a=(1-age/1.1)*.22;
+    const g=vm.createRadialGradient(w.x+w.dx*age*12,-44-age*22,0,w.x+w.dx*age*12,-44-age*22,r);
+    g.addColorStop(0,`rgba(176,174,166,${a})`); g.addColorStop(1,"rgba(176,174,166,0)");
+    vm.fillStyle=g; vm.beginPath(); vm.arc(w.x+w.dx*age*12,-44-age*22,r,0,7); vm.fill();
+  }
   // muzzle flash: randomised star + bloom
   if (flash) {
     const k=flash/.075;
@@ -1719,7 +2451,7 @@ function frame(ms) {
     ? 1-charge.plant/plantTime : charge.fuse/fuseTime);
   const [fx,fy,fz]=direction();
   prompt.hidden=phase!=="playing" || !!charge || !charges ||
-    trace(player.x,player.eye,player.z,fx,fy,fz,plantRange,hit)!==2;
+    !breachable(trace(player.x,player.eye,player.z,fx,fy,fz,plantRange,hit));
   const sh=shake*shake*14;
   document.querySelector("main").style.transform=sh>.05?`translate(${(Math.random()-.5)*sh}px,${(Math.random()-.5)*sh}px)`:"";
   requestAnimationFrame(frame);

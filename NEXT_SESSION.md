@@ -1,6 +1,14 @@
 # Bunker Buster: next session
 
-Start here. Current version: **v9** (live at https://davidfeuling.com/bunker-buster/, repo DHFM91/bunker-buster).
+Start here. Current version: **v10** (live at https://davidfeuling.com/bunker-buster/, repo DHFM91/bunker-buster).
+
+## Status after v10
+- Done: priority 1 (realism pass) and priority 3 (map variants, plus a fortified spawn foyer with a sentry in view).
+- Left over from v10:
+  - Port `planLayout` to C# (`godot/scripts/MapPlan.cs`) and re-run `godot/tools/asset-export.js` to refresh `godot/assets/`.
+  - Rendering costs roughly 2.5x what v9 did (lighting, shadows and wall detail run per pixel). Fine on desktop; watch phones.
+  - Not built yet: control room with camera/alarm panel, catwalks.
+- Next up: priority 2 (smarter soldiers).
 
 ## Priorities, in order
 

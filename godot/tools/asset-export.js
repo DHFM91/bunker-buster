@@ -13,8 +13,9 @@ async function exportBunkerBusterAssets(src) {
   };
   const code =
     slice("let colors = [", "function rollPalette") +
-    slice("const dustColor=", "// ---------- Guard sprite") .replace(/\}\); \}[\s\S]*$/, "}); }") +
-    slice("const G={", "function render(");
+    "const dustColor=[0,0,0],rubbleColor=[0,0,0],groundFog=[0,0,0],textureSize=64;\n" +
+    slice("// ===== TEXTURES", "// ===== END TEXTURES") +
+    slice("const G={", "// ===== Light:");
   const game = new Function(code + "\nreturn {colors, palette, buildTextures, guardPixel, corpsePixel, intelPixel};")();
   const files = {};
 
@@ -25,7 +26,7 @@ async function exportBunkerBusterAssets(src) {
 
   // ---- textures: 64x64 tiles straight from the game's generator (default colour scheme) ----
   const textures = game.buildTextures();
-  const texNames = { 1: "floor", 2: "concrete", 3: "outer_wall", 4: "extraction_pad", 6: "crate", 7: "rubble" };
+  const texNames = { 1: "floor", 2: "concrete", 3: "outer_wall", 4: "extraction_pad", 6: "crate", 7: "rubble", 8: "sandbag", 9: "drum", 10: "reinforced", 11: "bars", 12: "yard", 13: "truck", 14: "truck_dark" };
   for (const [id, name] of Object.entries(texNames)) {
     const c = makeCanvas(64, 64), ctx = c.getContext("2d"), img = ctx.createImageData(64, 64);
     const t = textures[id];
