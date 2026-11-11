@@ -1,6 +1,6 @@
 # Bunker Buster: next session
 
-Start here. Current version: **v18**. Loose ideas are in **TODO.md** (live at https://davidfeuling.com/bunker-buster/, repo DHFM91/bunker-buster).
+Start here. Current version: **v19**. Loose ideas are in **TODO.md** (live at https://davidfeuling.com/bunker-buster/, repo DHFM91/bunker-buster).
 
 ## Status after v10
 - Done: priority 1 (realism pass) and priority 3 (map variants, plus a fortified spawn foyer with a sentry in view).

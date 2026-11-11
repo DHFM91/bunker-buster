@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v18";
+const VERSION = "v19";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -62,6 +62,23 @@ const MOODS={
   smog:    {lo:[50,.28,.6],  hi:[70,.12,.36],  sun:[1,.84,.58],  k:.85,  a:.52, l:.9,  el:[30,48], c:.7},
   night:   {lo:[222,.28,.34],hi:[230,.36,.16], sun:[.5,.58,.78],  k:.55,  a:.95, l:1.6, el:[35,60], c:.35},
 };
+// Night-vision goggles, baked in when the level loads (nothing extra runs per frame): every surface
+// becomes a brightened grey, and all light is green phosphor, so the whole scene reads in green.
+function nightVisionPalette() {
+  const grey=c=>{ const L=Math.min(255,(c[0]*.3+c[1]*.59+c[2]*.11)*1.25+10); return [L,L,L]; };
+  for (const t of textures) for (let i=0;i<t.length;i+=3) {
+    const L=Math.min(255,(t[i]*.3+t[i+1]*.59+t[i+2]*.11)*1.25+10); t[i]=t[i+1]=t[i+2]=L;
+  }
+  colors=colors.map(grey);
+  for (const k of ["stripe","stripeDark"]) palette[k]=grey(palette[k]);
+  // a little grain baked into the textures keeps the goggle feel
+  for (const t of textures) for (let i=0;i<t.length;i+=3) { const n=((i*2654435761)>>>27)-16; t[i]=t[i+1]=t[i+2]=Math.max(0,Math.min(255,t[i]+n*.6)); }
+  Object.assign(palette,{
+    skyLo:[52,128,62], skyHi:[12,46,20], cloud:[70,150,80], fog:[34,92,42], clouds:.4, glare:.3,
+    amb:[.42,1.12,.5], sun:[.14,.36,.17], lamp:[.5,1.3,.6], lampK:1.3,
+  });
+  for (let c=0;c<3;c++) { groundFog[c]=palette.fog[c]; dustColor[c]=[60,150,72][c]; rubbleColor[c]=[90,190,104][c]; }
+}
 function rollPalette(random=Math.random) {
   const r=(a,b)=>a+random()*(b-a), pick=a=>a[Math.floor(random()*a.length)];
   const T=(typeof theme!=="undefined" && theme.paint) || {};
@@ -98,6 +115,7 @@ function rollPalette(random=Math.random) {
     dustColor[c]=concrete[c]*.95; rubbleColor[c]=Math.min(255,concrete[c]*1.1);
   }
   textures=buildTextures();
+  if (typeof theme!=="undefined" && theme.nvg) nightVisionPalette();
   sunVis.fill(255);
 }
 function cellCenter(cell) {
@@ -2074,36 +2092,6 @@ function truckDetail(id,side,px,py,pz) {
   if (a>2) { AR*=1.04; AG*=1.06; AB*=.94; }               // canvas over the bed is a touch greener
   if (py<2.7) paint([88,72,52],Math.min(.6,(2.7-py)*.5));
 }
-// Night-vision goggles: the frame is turned to green phosphor and auto-exposed, so a dark base
-// still reads clearly. Bright things bloom; a little grain and scanline keep the goggle feel.
-let nvgGain=2.5, nvgCurve=null, nvgVignette=null, nvgW=0;
-function nightVision(clock) {
-  if (!nvgCurve) {
-    // tone curve as a lookup table: deeper blacks, soft highlight roll-off
-    nvgCurve=new Float32Array(2048);
-    for (let v=0;v<2048;v++) nvgCurve[v]=255*(1-Math.exp(-Math.max(0,v-38)/120));
-  }
-  if (nvgW!==width) {
-    // goggle vignette and scanlines, baked once per screen size
-    nvgW=width; nvgVignette=new Float32Array(width*height);
-    for (let i=0;i<width*height;i++) {
-      const x=(i%width)/width-.5, y=((i/width)|0)/height-.5, d=Math.hypot(x*1.1,y*1.4);
-      nvgVignette[i]=Math.max(0,Math.min(1,1.35-d*1.5))*((((i/width)|0)&1)?.93:1);
-    }
-  }
-  let sum=0;
-  for (let j=0;j<pixels.length;j+=16) sum+=pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11;
-  const mean=sum/(pixels.length/16);
-  nvgGain+=(Math.max(1.2,Math.min(5,120/Math.max(8,mean)))-nvgGain)*.15;
-  const seed=Math.floor(clock*30)*7919;
-  const curve=nvgCurve, vig=nvgVignette;
-  for (let i=0,j=0;j<pixels.length;i++,j+=4) {
-    const v=(pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11)*nvgGain;
-    let L=curve[v<2047?v|0:2047];
-    L*=vig[i]*(.94+(((i*2654435761+seed)>>>24)&15)/120);           // vignette, scanlines and grain
-    pixels[j]=L*.38; pixels[j+1]=Math.min(255,L*1.02+6); pixels[j+2]=L*.46;
-  }
-}
 function render(clock) {
   applyDirty();
   for (const L of lamps) if (!L.dead && !tile(L.ax,L.ay,L.az)) {
@@ -2393,16 +2381,11 @@ function render(clock) {
     const L=spriteLight(p.x,p.y,p.z), c=[dustColor[0]*L[0],dustColor[1]*L[1],dustColor[2]*L[2]];
     sprite(p.x,p.y,p.z,size,size,()=>c,Math.min(.22,p.life*.25));
   }
-  if (theme.nvg) nightVision(clock);
   ctx.putImageData(image,0,0);
 
   vm.clearRect(0,0,VW,VH);
   drawRifle(clock);
-  if (theme.nvg) {
-    // tint the gun green in the canvas itself (a CSS filter here re-runs every frame and lags badly)
-    vm.save(); vm.setTransform(1,0,0,1,0,0); vm.globalCompositeOperation="source-atop";
-    vm.fillStyle="rgba(40,150,60,.55)"; vm.fillRect(0,0,VW,VH); vm.restore();
-  }
+
   if (charge?.plant>0) drawPlant(1-charge.plant/plantTime);
   if (hurt) {
     const edge=vm.createRadialGradient(VW/2,VH/2,VH*.25,VW/2,VH/2,VW*.51);
