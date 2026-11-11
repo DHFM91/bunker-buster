@@ -13,6 +13,8 @@ body{margin:0;background:#090e0f;color:var(--paper);font:15px system-ui,sans-ser
 main{position:relative;width:min(100vw,177.78dvh);aspect-ratio:16/9;overflow:hidden;background:#192322;isolation:isolate}
 canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
 #viewmodel{position:absolute;inset:0;image-rendering:auto;pointer-events:none}
+main.nvg #viewmodel{filter:grayscale(1) sepia(1) hue-rotate(62deg) saturate(2.4) brightness(1.25)}
+main.nvg::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at center,transparent 58%,#020a04c0 100%)}
 #hud{position:absolute;inset:0;pointer-events:none;padding:2.4%;display:grid;grid-template-rows:auto 1fr auto;text-shadow:0 1px 3px #030708;font:700 clamp(9px,1.15vw,16px) monospace;letter-spacing:.08em;background:radial-gradient(ellipse at center,transparent 44%,#050b0b42 100%)}
 .row{display:flex;align-items:flex-start;justify-content:space-between;gap:1em}
 .bottom{align-items:flex-end}
@@ -108,7 +110,7 @@ article.scored .controls{display:none!important}
 #board li.mine{background:#f2b76b30;color:var(--amber)}
 @media(max-width:620px){#overlay{padding:2.5%}article{padding:12px}p{font-size:12px;margin:.4em 0 .65em}.controls{margin-top:.65em}}
 </style>
-<script defer src="bunker-buster.js?v=12"></script>
+<script defer src="bunker-buster.js?v=13"></script>
 </head>
 <body>
 <main aria-label="Bunker Buster tactical shooter">

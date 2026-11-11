@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v12";
+const VERSION = "v13";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -60,7 +60,7 @@ const MOODS={
   day:     {lo:[200,.3,.74], hi:[212,.5,.46],  sun:[1,.96,.88],  k:1.1,  a:.58, l:.5,  el:[48,68], c:.45},
   overcast:{lo:[205,.06,.66],hi:[210,.08,.47], sun:[.86,.88,.9], k:.42,  a:.72, l:.8,  el:[45,65], c:.95},
   smog:    {lo:[50,.28,.6],  hi:[70,.12,.36],  sun:[1,.84,.58],  k:.85,  a:.52, l:.9,  el:[30,48], c:.7},
-  night:   {lo:[222,.3,.24], hi:[232,.4,.09],  sun:[.42,.5,.72], k:.45,  a:.62, l:1.6, el:[35,60], c:.35},
+  night:   {lo:[222,.28,.34],hi:[230,.36,.16], sun:[.5,.58,.78],  k:.55,  a:.95, l:1.6, el:[35,60], c:.35},
 };
 function rollPalette(random=Math.random) {
   const r=(a,b)=>a+random()*(b-a), pick=a=>a[Math.floor(random()*a.length)];
@@ -480,6 +480,7 @@ function reset(random=Math.random) {
   grenades=[]; grenadeCount=GRENADES; pendingBlasts=[]; throwCool=0;
   if (rule("caution",false)) { alertLevel=CAUTION; alertTimer=60; }
   document.querySelector("#location").textContent=theme.name;
+  document.querySelector("main").classList.toggle("nvg",!!theme.nvg);
   document.querySelector("#level-label").textContent="LEVEL "+campaign.level;
   markDirty(0,0,0); markDirty(X-1,Y-1,Z-1);
 }
@@ -884,8 +885,8 @@ const THEMES=[
   {id:"desert", name:"DESERT DEPOT", brief:"Sun-baked yards and wide windows. Long sight lines work both ways: guards see further here.",
     moods:["day","smog"], paint:{hue:[28,42],sat:[.14,.24],light:[.56,.66],floor:[36,.22,.5],yard:[38,.3,.58]},
     plan:{yards:2, windows:.3}, rules:{sight:1.15}},
-  {id:"night", name:"NIGHT RAID", brief:"Lights out. Guards can't see as far in the dark, but there are more of them on shift.",
-    moods:["night"], plan:{windows:.2}, rules:{sight:.72, garrison:3}},
+  {id:"night", name:"NIGHT RAID", brief:"Lights out, goggles on. Guards can't see as far in the dark, but there are more of them on shift.",
+    moods:["night"], nvg:true, plan:{windows:.2}, rules:{sight:.72, garrison:3}},
   {id:"vault", name:"DEEP VAULT", brief:"A hardened bunker: reinforced walls everywhere, each needing two charges. You get extra charges.",
     moods:["overcast","smog","night"], paint:{sat:[.02,.05],light:[.44,.52]}, plan:{reinforced:.5, windows:.06, vents:5}, rules:{charges:14}},
   {id:"lockdown", name:"LOCKDOWN", brief:"They already know something's up: the base starts on CAUTION and the fuel drums are everywhere.",
@@ -2065,6 +2066,23 @@ function truckDetail(id,side,px,py,pz) {
   if (a>2) { AR*=1.04; AG*=1.06; AB*=.94; }               // canvas over the bed is a touch greener
   if (py<2.7) paint([88,72,52],Math.min(.6,(2.7-py)*.5));
 }
+// Night-vision goggles: the frame is turned to green phosphor and auto-exposed, so a dark base
+// still reads clearly. Bright things bloom; a little grain and scanline keep the goggle feel.
+let nvgGain=2.5;
+function nightVision(clock) {
+  let sum=0;
+  for (let j=0;j<pixels.length;j+=16) sum+=pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11;
+  const mean=sum/(pixels.length/16);
+  nvgGain+=(Math.max(1.2,Math.min(5,120/Math.max(8,mean)))-nvgGain)*.15;
+  const seed=Math.floor(clock*30)*7919;
+  for (let i=0,j=0;j<pixels.length;i++,j+=4) {
+    const row=(i/width)|0;
+    let L=(pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11)*nvgGain;
+    L=255*(1-Math.exp(-Math.max(0,L-38)/120));                    // deeper blacks, soft highlight roll-off
+    L*=(row&1?.93:1)*(.94+(((i*2654435761+seed)>>>24)&15)/120);    // scanlines and grain
+    pixels[j]=L*.38; pixels[j+1]=Math.min(255,L*1.02+6); pixels[j+2]=L*.46;
+  }
+}
 function render(clock) {
   applyDirty();
   for (const L of lamps) if (!L.dead && !tile(L.ax,L.ay,L.az)) {
@@ -2205,7 +2223,8 @@ function render(clock) {
     const view=guardView(g);
     const fall=g.fall||0;
     const step=Math.sin(g.gait)*g.pace;
-    const lit=spriteLight(g.x,2.6,g.z);
+    // through night-vision goggles soldiers stand out brighter than the concrete around them
+    const lit=spriteLight(g.x,2.6,g.z).map(c=>theme.nvg?c*1.9+.35:c);
     if (fall>=.55) {
       const lie=Math.min(1,(fall-.55)/.45), pose=g.pose??=h3(Math.floor(g.x*7),Math.floor(g.z*7),3)%3;
       sprite(g.x,1+.32,g.z,2.9,.64,(u,v)=>corpsePixel(u,v/lie-(1/lie-1),pose,g.look),1,true,spriteLight(g.x,1.4,g.z));
@@ -2353,6 +2372,7 @@ function render(clock) {
     const L=spriteLight(p.x,p.y,p.z), c=[dustColor[0]*L[0],dustColor[1]*L[1],dustColor[2]*L[2]];
     sprite(p.x,p.y,p.z,size,size,()=>c,Math.min(.22,p.life*.25));
   }
+  if (theme.nvg) nightVision(clock);
   ctx.putImageData(image,0,0);
 
   vm.clearRect(0,0,VW,VH);
