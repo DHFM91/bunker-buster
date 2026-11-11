@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v17:** long runs pay off: damage now costs 0.5% of the level score per HP lost (was 1%), and each level after the first is worth 10% more (level 2 ×1.1, level 3 ×1.2, …).
 - **v16:** dying no longer wipes out the level: you keep half of what you scored on it (soldiers downed, concrete destroyed), it adds to your run total, and you can post that total to the leaderboard.
 - **v15:** grenade reminder reads "3 GRN (PRESS G)" so it reads as one item.
 - **v14:** grenades now blow holes in concrete walls (smaller than a breach charge) and crack reinforced walls; the kit readout shows "3 GRN · PRESS G" on desktop as a reminder.

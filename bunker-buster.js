@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v16";
+const VERSION = "v17";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -934,10 +934,13 @@ function scoreRun(won) {
   lines.push(["Soldiers downed", downed+" × "+SCORE.guard, downed*SCORE.guard]);
   lines.push(["Concrete destroyed", run.blocks+" × "+SCORE.block, run.blocks*SCORE.block]);
   const subtotal=lines.reduce((a,l)=>a+l[2],0);
-  // dying caps the damage penalty at 50%, so whatever you did on the way down still counts
-  const cut=won?Math.min(100,damage):50;
+  // damage costs half a percent per HP lost; dying costs a flat 50%, so what you did on the way down still counts
+  const cut=won?Math.min(50,Math.round(damage*.5)):50;
   const penalty=Math.round(subtotal*cut/100);
-  return {lines,subtotal,damage,cut,penalty,total:Math.max(0,subtotal-penalty),time:run.time,won};
+  // deeper levels are worth more: +10% per level after the first
+  const mult=1+.1*(campaign.level-1);
+  const base=Math.max(0,subtotal-penalty);
+  return {lines,subtotal,damage,cut,penalty,mult,base,total:Math.round(base*mult),time:run.time,won};
 }
 function fmtTime(t) { const m=Math.floor(t/60), s=t-m*60; return m+":"+(s<10?"0":"")+s.toFixed(2); }
 
@@ -1023,6 +1026,7 @@ async function showResults(r,final) {
     r.lines.map(l=>row(l[0],l[1],l[2].toLocaleString())).join("")+
     row("Subtotal","",r.subtotal.toLocaleString(),"sub")+
     row(r.won?"Damage taken":"Killed in action",r.won?r.damage+" HP → −"+r.cut+"%":"−50%",(r.penalty?"−":"")+r.penalty.toLocaleString(),r.penalty?"pen":"")+
+    (r.mult>1?row("Level "+campaign.level+" bonus","× "+r.mult.toFixed(1),"+"+(r.total-r.base).toLocaleString()):"")+
     row("Level "+campaign.level+" score","",r.total.toLocaleString(),"sub")+
     row("RUN TOTAL",campaign.cleared+" level"+(campaign.cleared===1?"":"s"),campaign.total.toLocaleString(),"total")+`</table>`;
   resultsEl.hidden=false; entryEl.hidden=true; overlay.querySelector("article").classList.add("scored");
