@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v13";
+const VERSION = "v14";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -854,7 +854,8 @@ function updateGrenades(dt) {
     }
     if (g.fuse<=0) {
       g.dead=true;
-      explode({x:g.x,y:g.y+.3,z:g.z,cx:g.x,cy:g.y+.3,cz:g.z,carve:0,reach:6.5,damage:85,guardR:4.6,
+      // centre the blast at waist height so a grenade resting against a wall bites a real hole in it
+      explode({x:g.x,y:g.y+.3,z:g.z,cx:g.x,cy:Math.max(g.y+.3,2.3),cz:g.z,carve:3.1,reach:6.5,damage:85,guardR:4.6,
         cause:"Your own grenade got you. Throw it further."});
       if (phase!=="playing") return;
     }
@@ -2734,7 +2735,7 @@ function frame(ms) {
   health.textContent=String(player.hp).padStart(2,"0");
   healthFill.style.width=player.hp+"%";
   healthFill.classList.toggle("low",player.hp<=36);
-  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN";
+  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN"+(isTouch?"":" · PRESS G");
   message.textContent=charge?(charge.plant>0
     ? "PLANTING CHARGE"
     : "CHARGE ARMED  "+charge.fuse.toFixed(1)+" S")

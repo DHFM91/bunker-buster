@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v14:** grenades now blow holes in concrete walls (smaller than a breach charge) and crack reinforced walls; the kit readout shows "3 GRN · PRESS G" on desktop as a reminder.
 - **v13:** Night Raid is now seen through green night-vision goggles that auto-adjust their brightness, with soldiers standing out brighter than the walls; night weather in the other themes is brighter too.
 - **v12:** endless runs. Every extraction takes you to a brand-new procedural base, a little tougher each time, with its own theme: Relay Station, Arctic Outpost (snow; louder footsteps), Desert Depot (guards see further), Night Raid (darker, more guards), Deep Vault (reinforced walls, extra charges), Lockdown (starts on CAUTION, fuel drums everywhere) and Overgrown Depot (moss, gates, vents and windows). After a win, go on or end the run; the leaderboard now ranks run totals and shows levels cleared. Also: windows in some walls (some barred) that you and the guards can see through, red fuel drums that explode and chain, and 3 grenades per level (G, or NADE on touch) that lob in a low arc, bounce, set off drums and draw guards with the noise.
 - **v11:** guards keep a body's width apart, so you can always count them; a guard who spots you needs 1 second to report it, and if you kill every guard who saw you inside that second the alert is called off (reinforcements only come once the report gets out).
