@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v18:** Night Raid no longer lags: the goggle tint and vignette are drawn by the game instead of by browser CSS filters, and the night-vision pass uses precomputed tables.
 - **v17:** long runs pay off: damage now costs 0.5% of the level score per HP lost (was 1%), and each level after the first is worth 10% more (level 2 ×1.1, level 3 ×1.2, …).
 - **v16:** dying no longer wipes out the level: you keep half of what you scored on it (soldiers downed, concrete destroyed), it adds to your run total, and you can post that total to the leaderboard.
 - **v15:** grenade reminder reads "3 GRN (PRESS G)" so it reads as one item.

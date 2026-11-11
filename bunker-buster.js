@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v17";
+const VERSION = "v18";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -2076,18 +2076,31 @@ function truckDetail(id,side,px,py,pz) {
 }
 // Night-vision goggles: the frame is turned to green phosphor and auto-exposed, so a dark base
 // still reads clearly. Bright things bloom; a little grain and scanline keep the goggle feel.
-let nvgGain=2.5;
+let nvgGain=2.5, nvgCurve=null, nvgVignette=null, nvgW=0;
 function nightVision(clock) {
+  if (!nvgCurve) {
+    // tone curve as a lookup table: deeper blacks, soft highlight roll-off
+    nvgCurve=new Float32Array(2048);
+    for (let v=0;v<2048;v++) nvgCurve[v]=255*(1-Math.exp(-Math.max(0,v-38)/120));
+  }
+  if (nvgW!==width) {
+    // goggle vignette and scanlines, baked once per screen size
+    nvgW=width; nvgVignette=new Float32Array(width*height);
+    for (let i=0;i<width*height;i++) {
+      const x=(i%width)/width-.5, y=((i/width)|0)/height-.5, d=Math.hypot(x*1.1,y*1.4);
+      nvgVignette[i]=Math.max(0,Math.min(1,1.35-d*1.5))*((((i/width)|0)&1)?.93:1);
+    }
+  }
   let sum=0;
   for (let j=0;j<pixels.length;j+=16) sum+=pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11;
   const mean=sum/(pixels.length/16);
   nvgGain+=(Math.max(1.2,Math.min(5,120/Math.max(8,mean)))-nvgGain)*.15;
   const seed=Math.floor(clock*30)*7919;
+  const curve=nvgCurve, vig=nvgVignette;
   for (let i=0,j=0;j<pixels.length;i++,j+=4) {
-    const row=(i/width)|0;
-    let L=(pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11)*nvgGain;
-    L=255*(1-Math.exp(-Math.max(0,L-38)/120));                    // deeper blacks, soft highlight roll-off
-    L*=(row&1?.93:1)*(.94+(((i*2654435761+seed)>>>24)&15)/120);    // scanlines and grain
+    const v=(pixels[j]*.3+pixels[j+1]*.59+pixels[j+2]*.11)*nvgGain;
+    let L=curve[v<2047?v|0:2047];
+    L*=vig[i]*(.94+(((i*2654435761+seed)>>>24)&15)/120);           // vignette, scanlines and grain
     pixels[j]=L*.38; pixels[j+1]=Math.min(255,L*1.02+6); pixels[j+2]=L*.46;
   }
 }
@@ -2385,6 +2398,11 @@ function render(clock) {
 
   vm.clearRect(0,0,VW,VH);
   drawRifle(clock);
+  if (theme.nvg) {
+    // tint the gun green in the canvas itself (a CSS filter here re-runs every frame and lags badly)
+    vm.save(); vm.setTransform(1,0,0,1,0,0); vm.globalCompositeOperation="source-atop";
+    vm.fillStyle="rgba(40,150,60,.55)"; vm.fillRect(0,0,VW,VH); vm.restore();
+  }
   if (charge?.plant>0) drawPlant(1-charge.plant/plantTime);
   if (hurt) {
     const edge=vm.createRadialGradient(VW/2,VH/2,VH*.25,VW/2,VH/2,VW*.51);
