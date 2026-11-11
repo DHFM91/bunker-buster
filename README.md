@@ -30,6 +30,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v11:** guards keep a body's width apart, so you can always count them; a guard who spots you needs 1 second to report it, and if you kill every guard who saw you inside that second the alert is called off (reinforcements only come once the report gets out).
 - **v10:** big realism pass and new maps. Real sun and shadows, sky with clouds, five times of day and weather, wall lamps, corner shading, stains, cracks, pipes, painted hazard edges on every opening, persistent bullet holes and scorch marks, blast smoke, sparks, muzzle smoke, camouflage and skin-tone variety on soldiers, three death poses, wear on the carbine. Maps now have a fortified spawn foyer with five exits and a sentry in view, courtyards with parked trucks and low cover, a pillared atrium, long halls, reinforced walls (two charges), barred gates, crouch-only vents, sandbag guard posts with sentries, an intel vault, crates, drums and sandbags.
 - **v9:** start-screen notice that the game plays much better on desktop than on mobile; global leaderboard reads correctly again.
 - **v8:** FIRE moved right next to the look stick and now aims too (hold and slide); fixed the global leaderboard showing "offline" when the score host adds extra text to its reply.

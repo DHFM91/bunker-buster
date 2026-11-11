@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v10";
+const VERSION = "v11";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -454,7 +454,7 @@ function reset(random=Math.random) {
     taken.add(cell);
     guards.push(makeGuard(x,z,cell,random()*6.28));
   }
-  alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; chaseField=null; chaseTimer=0; stepTimer=0;
+  alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; report=null; chaseField=null; chaseTimer=0; stepTimer=0;
   charges=10; reserve=144; magazine=24; reload=0; cooldown=0;
   flash=0; hurt=0; phase="ready"; hasIntel=false;
   notice=""; noticeTime=0; particles=[]; bullets=[];
@@ -941,6 +941,8 @@ function update(dt,clock) {
     }
   }
 
+  separateGuards();
+  updateReport(dt);
   if (!hasIntel && Math.hypot(player.x-intel.x,player.z-intel.z)<1.9) {
     hasIntel=true;
     say("INTEL SECURED. RETURN TO THE GREEN PAD.");
@@ -1124,6 +1126,10 @@ const PHASE=[
 const NOISE={gun:24, blast:46};
 const GARRISON=9, REINFORCEMENTS=5, MAX_GUARDS=20;
 let alertLevel=0, alertTimer=0, lastKnown=null, reinforced=false, chaseField=null, chaseTimer=0, stepTimer=0;
+// Reporting window: a guard who spots you needs REPORT_TIME to get the alert out. Kill everyone who saw you
+// inside that window and the alert is called off, as if it never happened. Reinforcements wait for the report.
+const REPORT_TIME=1;
+let report=null;   // {timer, reporters:Set, level, timer0, noise}
 const alertEl=document.querySelector("#alertbar");
 
 function makeGuard(x,z,cell,yaw) {
@@ -1145,9 +1151,11 @@ function setPhase(level) {
   alertLevel=level; alertTimer=PHASE[level].time;
   for (const g of guards) if (g.hp) { g.task="idle"; g.wait=rising?0:.5+Math.random(); g.goal=null; }
   if (level===ALERT) {
-    say("!! ALERT !!  REINFORCEMENTS INBOUND");
-    for (let k=0;k<3;k++) { tone(880,.16,.06,"square",880,k*.36); tone(660,.16,.06,"square",660,k*.36+.18); }
-    if (!reinforced) { reinforced=true; spawnReinforcements(); }
+    if (!report) {
+      say("!! ALERT !!  REINFORCEMENTS INBOUND");
+      for (let k=0;k<3;k++) { tone(880,.16,.06,"square",880,k*.36); tone(660,.16,.06,"square",660,k*.36+.18); }
+      if (!reinforced) { reinforced=true; spawnReinforcements(); }
+    } else say("SPOTTED · SILENCE HIM BEFORE HE REPORTS");
   } else if (level===EVASION) say(rising?"EVASION · THEY KNOW YOU'RE HERE":"EVASION · THEY LOST YOU");
   else if (level===CAUTION) say(rising?"CAUTION · SOMETHING WAS HEARD":"CAUTION · STAND DOWN SOON");
   else { say("UNDETECTED"); reinforced=false; }
@@ -1157,8 +1165,50 @@ function raiseTo(level,x,z) {
   if (level>=alertLevel) setPhase(level);
 }
 function spottedBy(g) {
+  if (alertLevel<ALERT) {
+    report={timer:REPORT_TIME, reporters:new Set([g]), level:alertLevel, timer0:alertTimer, lastKnown, noise:null};
+    lastKnown={x:player.x,z:player.z};
+    setPhase(ALERT);
+    return;
+  }
   lastKnown={x:player.x,z:player.z};
-  if (alertLevel<ALERT) setPhase(ALERT); else alertTimer=PHASE[ALERT].time;
+  alertTimer=PHASE[ALERT].time;
+  if (report) report.reporters.add(g);       // anyone else who sees you in the window is a witness too
+}
+function updateReport(dt) {
+  if (!report) return;
+  if (![...report.reporters].some(g=>g.hp)) {
+    // every witness died before the word got out: back to how things were
+    const r=report; report=null;
+    alertLevel=r.level; alertTimer=r.level?r.timer0:0; lastKnown=r.lastKnown;
+    for (const g of guards) if (g.hp) { g.task="idle"; g.wait=.4+Math.random(); g.goal=null; g.saw=false; }
+    say("REPORTER SILENCED · ALERT CALLED OFF");
+    tone(300,.18,.05,"triangle",180);
+    if (r.noise) makeNoise(r.noise.x,r.noise.z,r.noise.radius,r.noise.kind);   // shots fired still get heard
+    return;
+  }
+  report.timer-=dt;
+  if (report.timer<=0) {
+    report=null;
+    say("!! ALERT !!  REINFORCEMENTS INBOUND");
+    for (let k=0;k<3;k++) { tone(880,.16,.06,"square",880,k*.36); tone(660,.16,.06,"square",660,k*.36+.18); }
+    if (!reinforced) { reinforced=true; spawnReinforcements(); }
+  }
+}
+// Guards keep a body's width apart so a group never collapses into one sprite.
+const GUARD_SPACING=1.15;
+function separateGuards() {
+  const live=guards.filter(g=>g.hp);
+  for (let i=0;i<live.length;i++) for (let j=i+1;j<live.length;j++) {
+    const a=live[i], b=live[j];
+    let dx=b.x-a.x, dz=b.z-a.z, d=Math.hypot(dx,dz);
+    if (d>=GUARD_SPACING) continue;
+    if (d<1e-3) { const t=Math.random()*Math.PI*2; dx=Math.sin(t); dz=Math.cos(t); d=1; }
+    else { dx/=d; dz/=d; }
+    const push=(GUARD_SPACING-Math.min(d,GUARD_SPACING))*.5;
+    move(a,-dx*push,-dz*push,4.3);
+    move(b,dx*push,dz*push,4.3);
+  }
 }
 // Reinforcements enter from rooms on the outer ring that the player can't see and isn't near.
 function spawnReinforcements() {
@@ -1186,6 +1236,7 @@ function spawnReinforcements() {
 // Noise: a gunshot or blast pulls listeners in; footsteps only matter to guards close by.
 function makeNoise(x,z,radius,kind) {
   const f=flowField(x,z,radius);
+  if (report && kind!=="step") report.noise={x,z,radius,kind};
   const listeners=guards.filter(g=>g.hp && fieldAt(f,g.x,g.z)>=0);
   if (!listeners.length) return;
   // escalate first (a phase change re-tasks everyone), then send the listeners to the sound
