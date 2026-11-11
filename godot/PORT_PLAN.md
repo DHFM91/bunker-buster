@@ -1,7 +1,8 @@
 # Bunker Buster: Godot 4 port plan
 
 This folder holds the first pieces for moving Bunker Buster from HTML/JavaScript to Godot 4 with C#.
-The browser game (v5) stays the reference: everything here is checked against it.
+The browser game stays the reference: everything here is checked against it.
+Last synced with **v9** (the art and sounds in `assets/` are unchanged from v5 through v9, so they still match).
 
 ## Platform note
 Godot 4 can't yet export C# projects to the web (as of early 2026 that work is an unmerged draft).
@@ -31,8 +32,8 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 | `checkIntegrity` / falling debris | `StructuralIntegrity.cs` (same support-distance BFS) + `RigidBody3D` chunks or simple falling sprites. |
 | `flowField` / `followField` | `FlowField.cs` (same BFS); Godot's `NavigationServer` isn't needed for a grid this small. |
 | Alert phases (`PHASE`, `setPhase`, `makeNoise`) | `AlertDirector.cs` autoload singleton raising C# events the HUD and guards subscribe to. |
-| HUD / menus / results / leaderboard | `Control` scenes; `LeaderboardClient.cs` using `HttpRequest` against the existing bin. |
-| Touch controls | Godot `TouchScreenButton` + a virtual-joystick scene. |
+| HUD / menus / results / leaderboard | `Control` scenes; `LeaderboardClient.cs` using `HttpRequest` against the existing bin. **Quirk:** the bin host (json.extendsclass.com) now sometimes appends an HTML page after the JSON; read the body as text and cut at the first `<!doctype`/`<html` before parsing (the browser game's `fetchBoard()` does this). |
+| Touch controls (v7–v8 scheme) | One full-screen `Control` taking all touches. Left half: a floating MOVE stick that appears under the thumb. Right half: a floating LOOK stick that turns at a rate (dead zone 0.08, response curve power 1.6, 3.0 rad/s yaw, 1.7 rad/s pitch). FIRE sits diagonally up-left of the look stick's rest spot and also aims while held (hold to shoot, slide to steer). RELOAD / PLANT / DUCK in a row (beside FIRE in landscape, across the control area in portrait). A new finger always takes over its half; lifting or cancelling releases everything. See `touchLayout()` in `bunker-buster.js`. |
 | `tone()` synth | `AudioStreamPlayer` with the WAVs in `assets/audio/`. |
 
 ## Suggested order
@@ -41,3 +42,9 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 3. Guards (sprites, `FlowField`, `AlertDirector`), bullets.
 4. Intel, extraction, charges, scoring, results screen, leaderboard.
 5. Touch controls and Android export.
+
+## Changes since the first port notes (v6–v9)
+- v6: portrait layout on phones (game view on top, control area below), rotation-aware render size.
+- v7–v8: touch controls rebuilt as described above (same scheme as the QUACK game).
+- v8: leaderboard reads only the JSON part of the bin's reply.
+- v9: start-screen notice that the game plays much better on desktop. Mobile is still the weak spot; in Godot, consider shipping desktop first.
