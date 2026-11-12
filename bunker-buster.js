@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v22";
+const VERSION = "v23";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -1783,6 +1783,8 @@ function fab(u,v,look,k) {
 }
 // no skin shows anywhere: a dark balaclava under the goggles, dark gloves
 function skin(look,k) { return [46*k,48*k,44*k]; }
+// the face mask is a tan balaclava (gloves stay dark), the same on every soldier
+function mask(k) { return [176*k,156*k,116*k]; }
 function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
   if (u<0 || u>1 || v<0 || v>1) return;
   const side=view==="left" || view==="right";
@@ -1818,7 +1820,7 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
     if (v>=.108 && v<.205 && h>.44 && h<.63+(v>.14 && v<.165?.02:0)) {   // profile with nose
       if (v>.112 && v<.148 && h>.5) return h>.58 && v<.122?G.lensHi:(aim>0||firing) && h>.56 && v>.13?[230,60,40]:G.lens;   // goggles
       if (v>.112 && v<.148) return G.strap;                                              // goggle strap
-      return h>.6?skin(look,1.1):skin(look,1);
+      return h>.6?mask(1.1):mask(1);
     }
     if (v>.2 && v<.56) {
       if (h>.3 && h<.4 && v>.23 && v<.48) return h<.33?G.pouchDk:G.pouch; // pack
@@ -1838,15 +1840,15 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
   if (v>=.095 && v<.108 && c<.13) return G.strap;  // brim
   const jaw=.088-Math.max(0,v-.17)*1.4;
   if (v>=.108 && v<.205 && c<jaw) {
-    if (view==="back") return v<.13?G.strap:skin(look,.8);
+    if (view==="back") return v<.13?G.strap:mask(.8);
     if (v>.114 && v<.15 && c<.088) {                                    // goggles across the eyes
       if (c<.01) return G.strap;
       if (c>.078 || v<.118 || v>.145) return G.strap;
       if ((aim>0 || firing) && c>.03 && c<.05 && v>.13) return [230,60,40];
       return v<.126 && c>.05?G.lensHi:G.lens;
     }
-    if (v>.17 && v<.19 && c<.03) return skin(look,.75);                 // mask fold over the mouth
-    return c>.06?skin(look,.8):skin(look,1);
+    if (v>.17 && v<.19 && c<.03) return mask(.82);                 // mask fold over the mouth
+    return c>.06?mask(.8):mask(1);
   }
   if (v>.195 && v<.22 && c<.06) return G.mask;
   // shoulders + torso
@@ -1901,7 +1903,7 @@ function corpsePixel(u,v,pose=0,look=.5) {
   }
   if (v>.82 && u>.18 && u<.86 && Math.abs(v-.9)<.04) return u<.3?G.gunHi:G.gun;       // dropped rifle
   if (ellipse(u,v,.09,.55,.075,.3)) return v<.4?G.helmetHi:G.helmet;
-  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?skin(look,1):skin(look,.8);               // face/neck
+  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?mask(1):mask(.8);               // face/neck
   if (u>=.18 && u<.55 && v>.3 && v<.86) {
     if (u>.5) return G.belt;
     if (v<.42 && u>.24 && u<.48) return G.pouchDk;
