@@ -52,7 +52,7 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 ## v12 changes to port
 - Campaign: `THEMES`, `campaign`, `pickTheme`, `levelSight`, `levelGarrison`; `planLayout(random, theme.plan)` takes options (see `PLAN_DEFAULTS`) and now also returns `windows` ([a, b, barred]) and fuel flags on drum props.
 - Material 15 fuel drum; `explode()` is the one shared explosion (charges, grenades, drums); `armDrums`/`updateBlasts` chain drums.
-- Grenades: `throwGrenade`/`updateGrenades` (speed 12.5 + 4 up, gravity 16, bounce 0.45, fuse 2.2 s).
+- Grenades: `throwGrenade`/`updateGrenades` (speed 17 + 4.5 up, gravity 16, bounce 0.45, fuse 2.2 s; blast carve 4.1, reach 8.6, damage 113, soldier radius 6.1).
 - Leaderboard entries: [initials, run total, seconds, levels cleared].
 
 ## v10 changes to port
@@ -60,5 +60,6 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 - **New materials:** 8 sandbags, 9 drum, 10 reinforced concrete (bullets stop; a charge turns it into ordinary concrete), 11 steel bars, 12 yard asphalt, 13/14 truck. 7, 8, 9 and 11 are drawn as sub-voxel shapes (`SHAPE`, `shapeOcc`); in Godot these become small meshes or MultiMesh props.
 - **Lighting:** sun direction and colours per deploy (`MOODS`, `rollPalette`), sun shadows (DirectionalLight3D with shadows), sky ambient, wall lamps (OmniLight3D/SpotLight3D facing out of the wall), ambient occlusion (SSAO or baked), fog. World-space wall detail (`surface()`): stains, tie holes, cracks, pipes, hazard stripes on opening edges; best done as decals or a triplanar shader.
 - **Effects:** bullet-hole decals, blast scorch decals, smoke plumes, sparks, viewmodel muzzle smoke.
-- **Guards:** sentries hold a post (`g.post`) and sweep an arc until the alert rises; camouflage + skin tones (`fab`, `skin`), three corpse poses.
+- **Guards:** sentries hold a post (`g.post`) and sweep an arc until the alert rises; one standard fully armoured trooper (white plate `fab`, black undersuit `skin`, full helmet `helmetFront`), three corpse poses.
 - **Assets:** `tools/asset-export.js` now reads the `TEXTURES` block and exports the new materials; re-run it in a browser to refresh `assets/` (not done yet).
+- **v20 fire modes:** desktop mouse wheel cycles SINGLE / 3-round BURST / AUTO (`FIRE_MODES`, `pullTrigger`, `updateTrigger`; auto 0.11 s, burst 0.075 s between rounds then 0.32 s). In Godot: an input action on wheel up/down.

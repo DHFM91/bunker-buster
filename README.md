@@ -24,12 +24,14 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | WASD: move | Left thumb anywhere on the left half: MOVE stick |
 | Mouse: aim | Right thumb anywhere on the right half: LOOK stick (hold to keep turning) |
 | Click: fire | FIRE (hold to shoot; slide your thumb to aim while firing) |
+| Mouse wheel: fire mode (single / 3-round burst / auto) | |
 | Q: plant charge | PLANT |
 | R: reload | RELOAD |
 | C: crouch | DUCK |
 | Esc: pause | II |
 
 ## Version history
+- **v20:** mouse wheel switches fire mode on desktop: single shot, 3-round burst or full auto (shown in the kit readout). Grenades hit about a third harder and wider and are thrown faster, so they land further away. Every soldier is now the same fully armoured trooper: white plate, black undersuit, full helmet with black eye lenses.
 - **v19:** Night Raid's night-vision look is now baked into its colours and textures when the level loads, so it runs exactly as fast as every other level.
 - **v18:** Night Raid no longer lags: the goggle tint and vignette are drawn by the game instead of by browser CSS filters, and the night-vision pass uses precomputed tables.
 - **v17:** long runs pay off: damage now costs 0.5% of the level score per HP lost (was 1%), and each level after the first is worth 10% more (level 2 ×1.1, level 3 ×1.2, …).

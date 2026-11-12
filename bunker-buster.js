@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v19";
+const VERSION = "v20";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -641,10 +641,31 @@ function reloadRifle() {
   }
 }
 const hit = {};
-function shoot() {
+// Desktop fire modes, cycled with the mouse wheel: single shot, 3-round burst, full auto.
+const FIRE_MODES=["SINGLE","BURST","AUTO"];
+let fireMode=0, burstLeft=0, triggerHeld=false, kick=0;
+function cycleFireMode(dir) {
+  fireMode=(fireMode+dir+FIRE_MODES.length)%FIRE_MODES.length; burstLeft=0;
+  say("FIRE MODE: "+(FIRE_MODES[fireMode]==="BURST"?"3-ROUND BURST":FIRE_MODES[fireMode]));
+  tone(520,.05,.04,"square",380);
+}
+function pullTrigger() {
+  if (FIRE_MODES[fireMode]==="BURST") { if (!burstLeft && !cooldown) burstLeft=3; }
+  else shoot();
+}
+// called every frame: keeps bursts and full auto going
+function updateTrigger() {
+  const mode=FIRE_MODES[fireMode];
+  if (mode==="AUTO" && triggerHeld) shoot(.11);
+  if (mode==="BURST" && burstLeft && !cooldown) {
+    if (!magazine || reload) { burstLeft=0; if (!magazine) shoot(); return; }
+    burstLeft--; shoot(burstLeft?.075:.32);
+  }
+}
+function shoot(rate=.21) {
   if (phase!=="playing" || cooldown || reload || charge?.plant > 0) return;
   if (!magazine) { reloadRifle(); return; }
-  magazine--; cooldown=.21; flash=.075;
+  magazine--; cooldown=rate; kick=.13; flash=.075;
   vmSmoke.push({born:lastClock+.05,x:28,dx:(Math.random()-.5)*1.2}); if (vmSmoke.length>8) vmSmoke.shift();
   tone(190,.14,.13,"sawtooth",33);
   makeNoise(player.x,player.z,NOISE.gun,"gun");
@@ -845,10 +866,10 @@ function throwGrenade() {
   if (!grenadeCount) { say("NO GRENADES LEFT"); return; }
   grenadeCount--; throwCool=.7;
   const [dx,dy,dz]=direction();
-  // a soft underhand lob: modest speed plus a little lift, so it carries about a room or two
+  // a firm overhand throw with a little lift, so it carries two or three rooms
   const sx=player.x+dx*.5, sz=player.z+dz*.5, sy=player.eye-.35;
   grenades.push({x:canStand(sx,sz,player.eye)?sx:player.x,y:sy,z:canStand(sx,sz,player.eye)?sz:player.z,
-    vx:dx*12.5,vy:dy*12.5+4,vz:dz*12.5,fuse:GRENADE_FUSE,spin:0});
+    vx:dx*17,vy:dy*17+4.5,vz:dz*17,fuse:GRENADE_FUSE,spin:0});
   tone(260,.08,.05,"triangle",180);
   say("GRENADE OUT");
 }
@@ -873,7 +894,7 @@ function updateGrenades(dt) {
     if (g.fuse<=0) {
       g.dead=true;
       // centre the blast at waist height so a grenade resting against a wall bites a real hole in it
-      explode({x:g.x,y:g.y+.3,z:g.z,cx:g.x,cy:Math.max(g.y+.3,2.3),cz:g.z,carve:3.1,reach:6.5,damage:85,guardR:4.6,
+      explode({x:g.x,y:g.y+.3,z:g.z,cx:g.x,cy:Math.max(g.y+.3,2.3),cz:g.z,carve:4.1,reach:8.6,damage:113,guardR:6.1,
         cause:"Your own grenade got you. Throw it further."});
       if (phase!=="playing") return;
     }
@@ -1078,7 +1099,7 @@ initialsEl.addEventListener("input",()=>{ initialsEl.value=initialsEl.value.toUp
 
 function update(dt,clock) {
   run.time+=dt;
-  cooldown=Math.max(0,cooldown-dt); flash=Math.max(0,flash-dt);
+  cooldown=Math.max(0,cooldown-dt); kick=Math.max(0,kick-dt); flash=Math.max(0,flash-dt);
   hurt=Math.max(0,hurt-dt);
   noticeTime=Math.max(0,noticeTime-dt);
   if (reload) {
@@ -1094,6 +1115,7 @@ function update(dt,clock) {
   }
   touchLookStep(dt);
   if (touchFire) shoot();
+  updateTrigger();
   const crouched=keys.has("KeyC") || touchCrouch || !canStand(player.x,player.z,4.4);
   const eyeTarget=crouched?2.65:4.15;
   player.eye=crouched?eyeTarget:player.eye+(eyeTarget-player.eye)*Math.min(1,dt*18);
@@ -1705,22 +1727,36 @@ function guardView(guard) {
   return Math.sin(angle)>0?"left":"right";
 }
 
-// ---------- Guard sprite: helmet, goggles, plate carrier, rifle, knee pads ----------
-const G={helmet:[84,94,68],helmetHi:[118,128,92],strap:[38,40,34],skin:[190,140,100],skinDk:[150,104,72],
-  mask:[50,54,48],lens:[28,58,66],lensHi:[150,215,220],shirt:[98,106,78],shirtDk:[76,83,60],vest:[64,72,54],
-  pouch:[78,86,64],pouchDk:[44,50,38],belt:[42,40,34],buckle:[150,146,120],pants:[86,92,68],pantsDk:[66,72,52],
-  pad:[44,48,40],boot:[78,64,46],bootHi:[104,86,62],webbing:[48,54,40],gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
+// ---------- Guard sprite: one standard trooper, fully armoured in white plate over a black undersuit ----------
+// Every soldier looks the same: a full helmet with black eye lenses and a breathing grille, no face showing.
+const G={helmet:[206,208,212],helmetHi:[240,241,243],strap:[34,35,38],
+  mask:[34,35,38],lens:[12,12,14],lensHi:[110,118,128],vest:[216,218,222],
+  pouch:[230,231,234],pouchDk:[40,42,46],belt:[224,225,228],buckle:[120,123,130],
+  pad:[36,37,40],boot:[214,216,219],bootHi:[238,239,241],webbing:[186,189,194],grille:[70,72,78],
+  gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
 function ellipse(u,v,cu,cv,ru,rv){return ((u-cu)/ru)**2+((v-cv)/rv)**2<1;}
-// fabric: a four-colour woodland-style camouflage with fold shading; skin tones vary per soldier
-const CAMO=[[104,106,78],[80,86,60],[116,100,74],[52,56,42]];
+// armour: white plates with black undersuit showing in the seams between them, lightly shaded
 function fab(u,v,look,k) {
-  const a=Math.sin(u*31+look*9+Math.sin(v*17)*1.5)+Math.sin(v*23-u*7+look*5), b=Math.sin(u*13-v*29+look*3);
-  const c=a>1.15?CAMO[3]:a>.4?CAMO[1]:b>.6?CAMO[2]:CAMO[0];
-  const fold=1-.13*Math.max(0,Math.sin(v*64+u*14+look*4))**3;
-  return [c[0]*k*fold,c[1]*k*fold,c[2]*k*fold];
+  if (Math.abs(((v*15)%1)-.5)>.44) return [36*k,37*k,40*k];
+  const sh=k*(.9+.1*Math.cos(u*7+v*3));
+  return [226*sh,228*sh,231*sh];
 }
-const SKINS=[[198,150,110],[172,122,86],[134,92,62],[96,66,46]];
-function skin(look,k) { const c=SKINS[Math.floor(look*4)%4]; return [c[0]*k,c[1]*k,c[2]*k]; }
+// gloves, neck and joints: the black undersuit
+function skin(look,k) { return [40*k,41*k,45*k]; }
+// the helmet, seen from the front (c = distance from centre line) or the back
+function helmetFront(u,v,c,angry) {
+  if (v>=.2) return G.mask;                                            // neck seal
+  if (v>.112 && v<.148 && c>.018 && c<.074 && (v-.112)<.036-(c-.018)*.25) {   // angled black eye lenses
+    if (angry && c>.04 && c<.052 && v>.122 && v<.134) return [170,24,18];
+    return c>.055 && v<.122?G.lensHi:G.lens;
+  }
+  if (v>.1 && v<.112 && c<.08) return G.helmet;                         // brow ridge
+  if (v>.16 && v<.196 && c<.042) return ((u*90)|0)%2?G.grille:G.mask;  // breathing grille
+  if (v>.165 && v<.19 && c>.05 && c<.072) return G.grille;              // cheek vents
+  if (v>.145 && v<.165 && c<.012) return G.helmet;                      // nose ridge
+  if (c>.085) return G.helmet;
+  return v<.05?G.helmetHi:G.vest;
+}
 function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
   if (u<0 || u>1 || v<0 || v>1) return;
   const side=view==="left" || view==="right";
@@ -1751,13 +1787,13 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
     if (h>.5 && h<.6 && v>rv && v<rv+.08) return G.gun; // magazine
     // arm
     if (aim>0 ? (h>.47 && h<.66 && v>.24 && v<.34) : (h>.47 && h<.64 && v>.24 && v<.43 && (v-.24)*.9>(h-.5)*.6-.02)) return h<.52?fab(u,v,look,.76):fab(u,v,look,1);
-    if (v<.1 && ellipse(h,v,.53,.075,.12,.072)) return v<.04?G.helmetHi:fab(h,v,look,.82);
-    if (v>=.095 && v<.108 && h>.42 && h<.67) return G.strap;
-    if (v>=.108 && v<.205 && h>.44 && h<.63+(v>.14 && v<.165?.02:0)) {   // profile with nose
-      if (h<.49) return skin(look,.8);
-      if (h>.54 && h<.57 && v<.142 && v>.118) return v<.125?[58,42,30]:(aim>0||firing?[150,20,16]:[26,24,22]);
-      if (h>.58 && v>.176 && v<.184) return [104,52,44];
-      return h>.6?skin(look,1.1):skin(look,1);
+    if (v<.205 && (ellipse(h,v,.53,.1,.11,.1) || (v>.15 && h>.5 && h<.65))) {   // helmet in profile with a snout
+      if (v>.195) return G.mask;
+      if (v>.115 && v<.145 && h>.575 && h<.635) return (aim>0||firing) && h>.6 && v<.13?[170,24,18]:G.lens;
+      if (v>.16 && h>.58) return ((v*120)|0)%2?G.grille:G.mask;
+      if (ellipse(h,v,.5,.135,.03,.025)) return G.grille;                     // ear cap
+      if (v>.1 && v<.112) return G.helmet;
+      return v<.05?G.helmetHi:h<.48?G.helmet:G.vest;
     }
     if (v>.2 && v<.56) {
       if (h>.3 && h<.4 && v>.23 && v<.48) return h<.33?G.pouchDk:G.pouch; // pack
@@ -1769,28 +1805,10 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
     }
     return;
   }
-  // front / back
-  if (v<.1 && ellipse(u,v,.5,.075,.14,.07)) {
-    if (view==="front" && v>.045 && v<.075 && c<.1) // goggles pushed up on the helmet
-      return c<.012?G.strap:c<.085?(v<.053 && c>.03 && c<.05?G.lensHi:G.lens):G.strap;
-    if (v<.035 && c<.08) return G.helmetHi;
-    return fab(u,v,look,.82);   // cloth helmet cover
-  }
-  if (v>=.095 && v<.108 && c<.13) return G.strap;  // brim
-  const jaw=.088-Math.max(0,v-.17)*1.4;
-  if (v>=.108 && v<.205 && c<jaw) {
-    if (view==="back") return v<.13?G.strap:skin(look,.8);
-    if (c>jaw-.012) return v<.16?G.strap:skin(look,.8);        // chin strap / cheek shadow
-    const angry=aim>0 || firing;
-    if (v>.118 && v<.128 && c>.016 && c<.068 && (!angry || v-.118>(.068-c)*.18)) return [58,42,30]; // brows
-    if (v>.13 && v<.146 && c>.022 && c<.064) {                // eyes
-      if (c>.036 && c<.05) return angry?[150,20,16]:[26,24,22];
-      return [232,226,212];
-    }
-    if (v>.14 && v<.168 && c<.011) return v>.16?skin(look,.8):skin(look,1.1); // nose
-    if (v>.176 && v<.184 && c<.032) return [104,52,44];       // mouth
-    if (v>.186 && c<.05) return skin(look,.9);                 // chin
-    return c>.06?skin(look,.8):skin(look,1);
+  // front / back: a full helmet, no face
+  if (v<.21 && (ellipse(u,v,.5,.105,.12,.1) || (v>.15 && c<.08))) {
+    if (view==="back") return v>.2?G.mask:v>.16 && v<.172?G.helmet:v<.05?G.helmetHi:G.vest;
+    return helmetFront(u,v,c,aim>0 || firing);
   }
   if (v>.195 && v<.22 && c<.06) return G.mask;
   // shoulders + torso
@@ -1845,7 +1863,7 @@ function corpsePixel(u,v,pose=0,look=.5) {
   }
   if (v>.82 && u>.18 && u<.86 && Math.abs(v-.9)<.04) return u<.3?G.gunHi:G.gun;       // dropped rifle
   if (ellipse(u,v,.09,.55,.075,.3)) return v<.4?G.helmetHi:G.helmet;
-  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?skin(look,1):skin(look,.8);               // face/neck
+  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?G.lens:G.mask;                            // visor and neck seal
   if (u>=.18 && u<.55 && v>.3 && v<.86) {
     if (u>.5) return G.belt;
     if (v<.42 && u>.24 && u<.48) return G.pouchDk;
@@ -2423,7 +2441,7 @@ let vmSmoke=[], lastClock=0;
 function drawRifle(clock) {
   lastClock=clock;
   vmSmoke=vmSmoke.filter(w=>clock-w.born<1.2);
-  const recoil=cooldown>.08?Math.sin((.21-cooldown)/.13*Math.PI)*5:0;
+  const recoil=kick>0?Math.sin((.13-kick)/.13*Math.PI)*5:0;
   const dip=reload?Math.sin(reload/1.15*Math.PI):0;
   const plant=charge?.plant>0?Math.min(1,(1-charge.plant/plantTime)*5):0;
   const idle=Math.sin(clock*2.2)*.55;
@@ -2699,7 +2717,7 @@ deploy.addEventListener("click",()=>{
 document.addEventListener("pointerlockchange",()=>{
   if (document.pointerLockElement===screen) { phase="playing"; overlay.hidden=true; }
   else if (phase==="playing") {
-    phase="paused"; keys.clear(); overlay.hidden=false;
+    phase="paused"; keys.clear(); triggerHeld=false; burstLeft=0; overlay.hidden=false;
     title.textContent="PAUSED"; brief.textContent="Click resume to return to the operation.";
     deploy.textContent="RESUME";
   }
@@ -2712,7 +2730,18 @@ document.addEventListener("mousemove",e=>{
   player.yaw+=e.movementX*.0027;
   player.pitch=Math.max(-1.12,Math.min(1.12,player.pitch-e.movementY*.0027));
 });
-screen.addEventListener("mousedown",e=>{ if (e.button===0) shoot(); });
+screen.addEventListener("mousedown",e=>{ if (e.button===0) { triggerHeld=true; pullTrigger(); } });
+document.addEventListener("mouseup",e=>{ if (e.button===0) triggerHeld=false; });
+// mouse wheel cycles single / burst / auto (one step per notch, with a short lockout so a flick isn't three steps)
+let wheelLock=0;
+screen.addEventListener("wheel",e=>{
+  if (phase!=="playing") return;
+  e.preventDefault();
+  const now=performance.now();
+  if (now<wheelLock || !e.deltaY) return;
+  wheelLock=now+140;
+  cycleFireMode(e.deltaY>0?1:-1);
+},{passive:false});
 document.addEventListener("keydown",e=>{
   if (phase!=="playing") return;
   keys.add(e.code);
@@ -2722,7 +2751,7 @@ document.addEventListener("keydown",e=>{
   if (e.code==="KeyR") reloadRifle();
 });
 document.addEventListener("keyup",e=>keys.delete(e.code));
-window.addEventListener("blur",()=>keys.clear());
+window.addEventListener("blur",()=>{ keys.clear(); triggerHeld=false; burstLeft=0; });
 
 reset();
 let last=0;
@@ -2743,7 +2772,7 @@ function frame(ms) {
   health.textContent=String(player.hp).padStart(2,"0");
   healthFill.style.width=player.hp+"%";
   healthFill.classList.toggle("low",player.hp<=36);
-  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN"+(isTouch?"":" (PRESS G)");
+  ammo.textContent=(reload?"RELOAD":String(magazine).padStart(2,"0")+"/"+reserve)+"  ·  "+charges+" CHG  ·  "+grenadeCount+" GRN"+(isTouch?"":" (PRESS G)  ·  "+FIRE_MODES[fireMode]+" (WHEEL)");
   message.textContent=charge?(charge.plant>0
     ? "PLANTING CHARGE"
     : "CHARGE ARMED  "+charge.fuse.toFixed(1)+" S")
