@@ -31,6 +31,7 @@ A first-person tactical shooter that runs in your browser. Grab the orange intel
 | Esc: pause | II |
 
 ## Version history
+- **v22:** soldiers redesigned to match the Godot model: olive helmet, cyan goggles over a dark face mask, desert camo fatigues, plate carrier, knee pads and brown boots. Every soldier looks the same (replaces v20's white armour).
 - **v21:** red direction indicators around the crosshair: a thick arc with an arrow points to where a hit came from (rifle fire or a blast), and a thinner pulsing arc points to a soldier who just spotted you. They swing round as you turn and fade after a second or two.
 - **v20:** mouse wheel switches fire mode on desktop: single shot, 3-round burst or full auto (shown in the kit readout). Grenades hit about a third harder and wider and are thrown faster, so they land further away. Every soldier is now the same fully armoured trooper: white plate, black undersuit, full helmet with black eye lenses.
 - **v19:** Night Raid's night-vision look is now baked into its colours and textures when the level loads, so it runs exactly as fast as every other level.

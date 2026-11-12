@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v21";
+const VERSION = "v22";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -1767,36 +1767,22 @@ function guardView(guard) {
   return Math.sin(angle)>0?"left":"right";
 }
 
-// ---------- Guard sprite: one standard trooper, fully armoured in white plate over a black undersuit ----------
-// Every soldier looks the same: a full helmet with black eye lenses and a breathing grille, no face showing.
-const G={helmet:[206,208,212],helmetHi:[240,241,243],strap:[34,35,38],
-  mask:[34,35,38],lens:[12,12,14],lensHi:[110,118,128],vest:[216,218,222],
-  pouch:[230,231,234],pouchDk:[40,42,46],belt:[224,225,228],buckle:[120,123,130],
-  pad:[36,37,40],boot:[214,216,219],bootHi:[238,239,241],webbing:[186,189,194],grille:[70,72,78],
-  gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
+// ---------- Guard sprite: one standard soldier: olive helmet, cyan goggles, dark face mask, desert camo, plate carrier ----------
+const G={helmet:[96,100,72],helmetHi:[132,134,98],strap:[38,40,34],skin:[190,140,100],skinDk:[150,104,72],
+  mask:[50,54,48],lens:[40,170,190],lensHi:[170,240,248],shirt:[98,106,78],shirtDk:[76,83,60],vest:[104,106,76],
+  pouch:[120,120,86],pouchDk:[62,66,50],belt:[42,40,34],buckle:[150,146,120],pants:[86,92,68],pantsDk:[66,72,52],
+  pad:[44,48,40],boot:[92,64,42],bootHi:[122,88,58],webbing:[84,88,62],gun:[30,33,32],gunHi:[70,76,74],flash:[255,224,130]};
 function ellipse(u,v,cu,cv,ru,rv){return ((u-cu)/ru)**2+((v-cv)/rv)**2<1;}
-// armour: white plates with black undersuit showing in the seams between them, lightly shaded
+// fabric: a four-colour desert/woodland camouflage with fold shading, the same on every soldier
+const CAMO=[[160,148,108],[112,116,80],[184,168,124],[82,90,62]];
 function fab(u,v,look,k) {
-  if (Math.abs(((v*15)%1)-.5)>.44) return [36*k,37*k,40*k];
-  const sh=k*(.9+.1*Math.cos(u*7+v*3));
-  return [226*sh,228*sh,231*sh];
+  const a=Math.sin(u*31+look*9+Math.sin(v*17)*1.5)+Math.sin(v*23-u*7+look*5), b=Math.sin(u*13-v*29+look*3);
+  const c=a>1.15?CAMO[3]:a>.4?CAMO[1]:b>.6?CAMO[2]:CAMO[0];
+  const fold=1-.13*Math.max(0,Math.sin(v*64+u*14+look*4))**3;
+  return [c[0]*k*fold,c[1]*k*fold,c[2]*k*fold];
 }
-// gloves, neck and joints: the black undersuit
-function skin(look,k) { return [40*k,41*k,45*k]; }
-// the helmet, seen from the front (c = distance from centre line) or the back
-function helmetFront(u,v,c,angry) {
-  if (v>=.2) return G.mask;                                            // neck seal
-  if (v>.112 && v<.148 && c>.018 && c<.074 && (v-.112)<.036-(c-.018)*.25) {   // angled black eye lenses
-    if (angry && c>.04 && c<.052 && v>.122 && v<.134) return [170,24,18];
-    return c>.055 && v<.122?G.lensHi:G.lens;
-  }
-  if (v>.1 && v<.112 && c<.08) return G.helmet;                         // brow ridge
-  if (v>.16 && v<.196 && c<.042) return ((u*90)|0)%2?G.grille:G.mask;  // breathing grille
-  if (v>.165 && v<.19 && c>.05 && c<.072) return G.grille;              // cheek vents
-  if (v>.145 && v<.165 && c<.012) return G.helmet;                      // nose ridge
-  if (c>.085) return G.helmet;
-  return v<.05?G.helmetHi:G.vest;
-}
+// no skin shows anywhere: a dark balaclava under the goggles, dark gloves
+function skin(look,k) { return [46*k,48*k,44*k]; }
 function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
   if (u<0 || u>1 || v<0 || v>1) return;
   const side=view==="left" || view==="right";
@@ -1827,13 +1813,12 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
     if (h>.5 && h<.6 && v>rv && v<rv+.08) return G.gun; // magazine
     // arm
     if (aim>0 ? (h>.47 && h<.66 && v>.24 && v<.34) : (h>.47 && h<.64 && v>.24 && v<.43 && (v-.24)*.9>(h-.5)*.6-.02)) return h<.52?fab(u,v,look,.76):fab(u,v,look,1);
-    if (v<.205 && (ellipse(h,v,.53,.1,.11,.1) || (v>.15 && h>.5 && h<.65))) {   // helmet in profile with a snout
-      if (v>.195) return G.mask;
-      if (v>.115 && v<.145 && h>.575 && h<.635) return (aim>0||firing) && h>.6 && v<.13?[170,24,18]:G.lens;
-      if (v>.16 && h>.58) return ((v*120)|0)%2?G.grille:G.mask;
-      if (ellipse(h,v,.5,.135,.03,.025)) return G.grille;                     // ear cap
-      if (v>.1 && v<.112) return G.helmet;
-      return v<.05?G.helmetHi:h<.48?G.helmet:G.vest;
+    if (v<.1 && ellipse(h,v,.53,.075,.12,.072)) return v<.04?G.helmetHi:fab(h,v,look,.82);
+    if (v>=.095 && v<.108 && h>.42 && h<.67) return G.strap;
+    if (v>=.108 && v<.205 && h>.44 && h<.63+(v>.14 && v<.165?.02:0)) {   // profile with nose
+      if (v>.112 && v<.148 && h>.5) return h>.58 && v<.122?G.lensHi:(aim>0||firing) && h>.56 && v>.13?[230,60,40]:G.lens;   // goggles
+      if (v>.112 && v<.148) return G.strap;                                              // goggle strap
+      return h>.6?skin(look,1.1):skin(look,1);
     }
     if (v>.2 && v<.56) {
       if (h>.3 && h<.4 && v>.23 && v<.48) return h<.33?G.pouchDk:G.pouch; // pack
@@ -1845,10 +1830,23 @@ function guardPixel(view,u,v,firing,step,aim=0,look=.5) {
     }
     return;
   }
-  // front / back: a full helmet, no face
-  if (v<.21 && (ellipse(u,v,.5,.105,.12,.1) || (v>.15 && c<.08))) {
-    if (view==="back") return v>.2?G.mask:v>.16 && v<.172?G.helmet:v<.05?G.helmetHi:G.vest;
-    return helmetFront(u,v,c,aim>0 || firing);
+  // front / back
+  if (v<.1 && ellipse(u,v,.5,.075,.14,.07)) {
+    if (v<.035 && c<.08) return G.helmetHi;
+    return fab(u,v,look,.82);   // cloth helmet cover
+  }
+  if (v>=.095 && v<.108 && c<.13) return G.strap;  // brim
+  const jaw=.088-Math.max(0,v-.17)*1.4;
+  if (v>=.108 && v<.205 && c<jaw) {
+    if (view==="back") return v<.13?G.strap:skin(look,.8);
+    if (v>.114 && v<.15 && c<.088) {                                    // goggles across the eyes
+      if (c<.01) return G.strap;
+      if (c>.078 || v<.118 || v>.145) return G.strap;
+      if ((aim>0 || firing) && c>.03 && c<.05 && v>.13) return [230,60,40];
+      return v<.126 && c>.05?G.lensHi:G.lens;
+    }
+    if (v>.17 && v<.19 && c<.03) return skin(look,.75);                 // mask fold over the mouth
+    return c>.06?skin(look,.8):skin(look,1);
   }
   if (v>.195 && v<.22 && c<.06) return G.mask;
   // shoulders + torso
@@ -1903,7 +1901,7 @@ function corpsePixel(u,v,pose=0,look=.5) {
   }
   if (v>.82 && u>.18 && u<.86 && Math.abs(v-.9)<.04) return u<.3?G.gunHi:G.gun;       // dropped rifle
   if (ellipse(u,v,.09,.55,.075,.3)) return v<.4?G.helmetHi:G.helmet;
-  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?G.lens:G.mask;                            // visor and neck seal
+  if (u>.13 && u<.2 && v>.42 && v<.82) return v>.5&&v<.6?skin(look,1):skin(look,.8);               // face/neck
   if (u>=.18 && u<.55 && v>.3 && v<.86) {
     if (u>.5) return G.belt;
     if (v<.42 && u>.24 && u<.48) return G.pouchDk;
