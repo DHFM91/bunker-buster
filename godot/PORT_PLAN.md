@@ -63,3 +63,4 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 - **Guards:** sentries hold a post (`g.post`) and sweep an arc until the alert rises; one standard fully armoured trooper (white plate `fab`, black undersuit `skin`, full helmet `helmetFront`), three corpse poses.
 - **Assets:** `tools/asset-export.js` now reads the `TEXTURES` block and exports the new materials; re-run it in a browser to refresh `assets/` (not done yet).
 - **v20 fire modes:** desktop mouse wheel cycles SINGLE / 3-round BURST / AUTO (`FIRE_MODES`, `pullTrigger`, `updateTrigger`; auto 0.11 s, burst 0.075 s between rounds then 0.32 s). In Godot: an input action on wheel up/down.
+- **v21 direction indicators:** `markDirection(x,z,kind)` / `drawDirectionMarks()` keep a world position per hit (1.6 s) or spot alert (2.2 s) and draw a red arc + arrow round the crosshair at its angle relative to yaw. In Godot: a CanvasLayer control drawing arcs each frame.

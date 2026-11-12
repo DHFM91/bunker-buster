@@ -1,7 +1,7 @@
 "use strict";
 
 // Bump on every public build; index.html's script tag carries the same ?v= so browsers drop stale copies.
-const VERSION = "v20";
+const VERSION = "v21";
 const screen = document.querySelector("#screen");
 const ctx = screen.getContext("2d");
 // Phones: the render buffer keeps a fixed height and matches the view's shape, so wide screens see more.
@@ -491,7 +491,7 @@ function reset(random=Math.random) {
   }
   alertLevel=0; alertTimer=0; lastKnown=null; reinforced=false; report=null; chaseField=null; chaseTimer=0; stepTimer=0;
   charges=rule("charges",10); reserve=144; magazine=24; reload=0; cooldown=0;
-  flash=0; hurt=0; phase="ready"; hasIntel=false;
+  flash=0; hurt=0; dirMarks=[]; phase="ready"; hasIntel=false;
   notice=""; noticeTime=0; particles=[]; bullets=[];
   fallers=[]; pending.clear(); integrityTimer=0; shake=0; noise=null; charge=null; blast=null; stridePhase=0; sway=0;
   decals.length=0; decalCount.fill(0); scorches.length=0;
@@ -800,7 +800,7 @@ function explode(e) {
     const ddx=player.x-cx, ddy=(player.eye-1.4)-cy, ddz=player.z-cz;
     if (trace(cx,cy,cz,ddx/pd,ddy/pd,ddz/pd,pd-.3,hit)) dmg=Math.round(dmg*.5);
     if (dmg>0) {
-      player.hp=Math.max(0,player.hp-dmg); hurt=.6;
+      player.hp=Math.max(0,player.hp-dmg); hurt=.6; markDirection(cx,cz,"hit");
       say("CAUGHT IN THE BLAST  -"+dmg);
       if (!player.hp) { finish(false,e.cause); return; }
     }
@@ -1151,6 +1151,7 @@ function update(dt,clock) {
       if (!guard.saw) {
         // spotted: "!" over the head, two-note sting, and a beat before the first shot
         guard.spot=1.1;
+        markDirection(guard.x,guard.z,"alert");
         guard.shot=Math.max(guard.shot,.45);
         const v=Math.max(.02,.07-dist*.0018);
         tone(620,.08,v,"square",620); tone(930,.13,v,"square",930,.09);
@@ -1199,6 +1200,7 @@ function update(dt,clock) {
       if (Math.hypot(b.x-player.x,b.z-player.z)<.55 && b.y>1 && b.y<player.eye+.35) {
         b.life=0;
         player.hp=Math.max(0,player.hp-12); hurt=.26;
+        { const bv=Math.hypot(b.vx,b.vz)||1; markDirection(player.x-b.vx/bv*10,player.z-b.vz/bv*10,"hit"); }
         tone(220,.12,.06,"sawtooth",90);
         if (!player.hp) { finish(false); return; }
       } else if (tile(Math.floor(b.x),Math.floor(b.y),Math.floor(b.z))) {
@@ -1400,6 +1402,44 @@ function setPhase(level) {
 function raiseTo(level,x,z) {
   if (x!==undefined) lastKnown={x,z};
   if (level>=alertLevel) setPhase(level);
+}
+// ===== Direction indicators: red arcs around the crosshair pointing at where damage or an alert came from =====
+// Marks keep their world position, so the arc swings round as you turn toward (or away from) the source.
+let dirMarks=[];
+const DIR_LIFE={hit:1.6, alert:2.2};
+function markDirection(x,z,kind) {
+  // refresh an existing mark from about the same spot instead of stacking arcs
+  const near=dirMarks.find(m=>m.kind===kind && Math.hypot(m.x-x,m.z-z)<2.5);
+  if (near) { near.x=x; near.z=z; near.life=DIR_LIFE[kind]; return; }
+  dirMarks.push({x,z,kind,life:DIR_LIFE[kind]});
+  if (dirMarks.length>8) dirMarks.shift();
+}
+function drawDirectionMarks(dt,clock) {
+  for (const m of dirMarks) m.life-=dt;
+  dirMarks=dirMarks.filter(m=>m.life>0);
+  if (!dirMarks.length) return;
+  const cx=VW/2, cy=VH/2, r=VH*.21;
+  vm.save(); vm.lineCap="round";
+  for (const m of dirMarks) {
+    let rel=Math.atan2(m.x-player.x,m.z-player.z)-player.yaw;
+    rel=Math.atan2(Math.sin(rel),Math.cos(rel));            // wrap to -pi..pi; 0 is straight ahead (top)
+    const hit=m.kind==="hit";
+    const fade=Math.min(1,m.life/(DIR_LIFE[m.kind]*.5));
+    const pulse=hit?1:.65+.35*Math.sin(clock*14);
+    const span=hit?.55:.4, a0=-Math.PI/2+rel-span/2, a1=a0+span;
+    vm.shadowColor="rgba(255,30,20,.9)"; vm.shadowBlur=hit?18:10;
+    vm.strokeStyle=`rgba(${hit?"235,32,22":"255,70,50"},${(hit?.9:.75)*fade*pulse})`;
+    vm.lineWidth=hit?14:7;
+    vm.beginPath(); vm.arc(cx,cy,r,a0,a1); vm.stroke();
+    // a small arrowhead on the outside of the arc, pointing at the source
+    const ax=Math.sin(rel), ay=-Math.cos(rel), tip=r+(hit?26:20), base=r+(hit?11:8), w=hit?11:8;
+    vm.fillStyle=vm.strokeStyle; vm.beginPath();
+    vm.moveTo(cx+ax*tip,cy+ay*tip);
+    vm.lineTo(cx+ax*base-ay*w,cy+ay*base+ax*w);
+    vm.lineTo(cx+ax*base+ay*w,cy+ay*base-ax*w);
+    vm.closePath(); vm.fill();
+  }
+  vm.restore();
 }
 function spottedBy(g) {
   if (alertLevel<ALERT) {
@@ -2412,6 +2452,9 @@ function render(clock) {
     vm.fillStyle=edge;
     vm.fillRect(0,0,VW,VH);
   }
+  const markDt=Math.min(.05,Math.max(0,clock-(drawDirectionMarks.last??clock)));
+  drawDirectionMarks.last=clock;
+  drawDirectionMarks(phase==="playing"?markDt:0,clock);
 }
 
 // ---------- First-person carbine (drawn at 4x on the viewmodel canvas) ----------
