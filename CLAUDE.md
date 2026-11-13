@@ -24,7 +24,7 @@ For anything in `godot/` (the eventual Godot 4 + C# port), work from the engine'
 2. **Clone that exact tag** outside the repo; never commit it:
    `git clone --depth 1 --branch 4.7.2-stable https://github.com/godotengine/godot <scratch>/godot-4.7.2`
    It is about 440 MB and takes seconds through the proxy. On David's PC there is a copy at
-   `C:\Users\david\Desktop\GPT's attempt at FPS prototype\Claude branchoff\godot-engine-4.7.2\`
+   `C:\Users\david\Desktop\GPT's attempt at FPS prototype\Claude branchoff\godot-engine-4.7.2\godot-engine-4.7.2\`
    (extracted from `godot-engine-4.7.2.zip` in the same folder); use that when working on his machine.
 3. **You can reference the engine code at any time.** Search it rather than guessing an API:
    - `doc/classes/<ClassName>.xml`: the full class reference (methods, properties, signals, defaults) for that exact version
