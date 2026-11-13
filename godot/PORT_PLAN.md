@@ -2,12 +2,15 @@
 
 This folder holds the first pieces for moving Bunker Buster from HTML/JavaScript to Godot 4 with C#.
 The browser game stays the reference: everything here is checked against it.
-Last synced with **v10** (see the v10 section at the bottom; `assets/` still holds the v9 art until the exporter is re-run) (the art and sounds in `assets/` are unchanged from v5 through v9, so they still match).
+Last synced with **v9** (the art and sounds in `assets/` are unchanged from v5 through v9, so they still match).
 
 ## Platform note
-Godot 4 can't yet export C# projects to the web (as of early 2026 that work is an unmerged draft).
+Target engine: **Godot 4.7.2-stable**. Its web exporter still refuses C# projects
+(`platform/web/export/export_plugin.cpp`: "Exporting to Web is currently not supported in Godot 4 when using C#/.NET").
 A C# build targets desktop and Android; the browser/GitHub Pages version stays on the JavaScript code
 until Godot's web export supports C#. GDScript would keep a web build if that matters more.
+When working on the port, keep a local clone of the engine source at the same tag and check APIs there
+(see "Godot / C# work" in the repo's CLAUDE.md).
 
 ## What's here
 | Path | What it is |
@@ -48,19 +51,3 @@ until Godot's web export supports C#. GDScript would keep a web build if that ma
 - v7–v8: touch controls rebuilt as described above (same scheme as the QUACK game).
 - v8: leaderboard reads only the JSON part of the bin's reply.
 - v9: start-screen notice that the game plays much better on desktop. Mobile is still the weak spot; in Godot, consider shipping desktop first.
-
-## v12 changes to port
-- Campaign: `THEMES`, `campaign`, `pickTheme`, `levelSight`, `levelGarrison`; `planLayout(random, theme.plan)` takes options (see `PLAN_DEFAULTS`) and now also returns `windows` ([a, b, barred]) and fuel flags on drum props.
-- Material 15 fuel drum; `explode()` is the one shared explosion (charges, grenades, drums); `armDrums`/`updateBlasts` chain drums.
-- Grenades: `throwGrenade`/`updateGrenades` (speed 17 + 4.5 up, gravity 16, bounce 0.45, fuse 2.2 s; blast carve 4.1, reach 8.6, damage 113, soldier radius 6.1).
-- Leaderboard entries: [initials, run total, seconds, levels cleared].
-
-## v10 changes to port
-- **Map plan:** `planLayout(random)` in `bunker-buster.js` (between the `MAP PLAN` markers) now decides the whole level on the room grid: maze + loops, spawn foyer (3x2 rooms, five exits, sentry post straight ahead), atrium with reinforced pillars, 1-2 courtyards with a truck, an optional 4-room hall, barred gates (only on loop passages), up to 3 crouch vents, reinforced walls (22% + the intel vault), guard posts and room props. Random calls are in a fixed order. **To do:** port it as `MapPlan.cs` (extend `MazeGenerator.cs`) and regenerate the reference JSON. `reset()` stamps the plan into voxels.
-- **New materials:** 8 sandbags, 9 drum, 10 reinforced concrete (bullets stop; a charge turns it into ordinary concrete), 11 steel bars, 12 yard asphalt, 13/14 truck. 7, 8, 9 and 11 are drawn as sub-voxel shapes (`SHAPE`, `shapeOcc`); in Godot these become small meshes or MultiMesh props.
-- **Lighting:** sun direction and colours per deploy (`MOODS`, `rollPalette`), sun shadows (DirectionalLight3D with shadows), sky ambient, wall lamps (OmniLight3D/SpotLight3D facing out of the wall), ambient occlusion (SSAO or baked), fog. World-space wall detail (`surface()`): stains, tie holes, cracks, pipes, hazard stripes on opening edges; best done as decals or a triplanar shader.
-- **Effects:** bullet-hole decals, blast scorch decals, smoke plumes, sparks, viewmodel muzzle smoke.
-- **Guards:** sentries hold a post (`g.post`) and sweep an arc until the alert rises; one standard soldier matching the Godot model (desert camo `fab`, tan balaclava `mask`, dark gloves `skin`, cyan goggles), three corpse poses.
-- **Assets:** `tools/asset-export.js` now reads the `TEXTURES` block and exports the new materials; re-run it in a browser to refresh `assets/` (not done yet).
-- **v20 fire modes:** desktop mouse wheel cycles SINGLE / 3-round BURST / AUTO (`FIRE_MODES`, `pullTrigger`, `updateTrigger`; auto 0.11 s, burst 0.075 s between rounds then 0.32 s). In Godot: an input action on wheel up/down.
-- **v21 direction indicators:** `markDirection(x,z,kind)` / `drawDirectionMarks()` keep a world position per hit (1.6 s) or spot alert (2.2 s) and draw a red arc + arrow round the crosshair at its angle relative to yaw. In Godot: a CanvasLayer control drawing arcs each frame.
